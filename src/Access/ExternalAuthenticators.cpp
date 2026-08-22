@@ -330,6 +330,8 @@ void ExternalAuthenticators::reset()
 
 void ExternalAuthenticators::setConfiguration(const Poco::Util::AbstractConfiguration & config, LoggerPtr log)
 {
+    std::lock_guard lock(mutex);
+
     Poco::Util::AbstractConfiguration::Keys all_keys;
     config.keys("", all_keys);
 
@@ -416,7 +418,6 @@ void ExternalAuthenticators::setConfiguration(const Poco::Util::AbstractConfigur
         tryLogCurrentException(log, "Could not parse Kerberos section");
     }
 
-    std::lock_guard lock(mutex);
     ldap_client_params_blueprint = std::move(new_ldap_client_params_blueprint);
     ldap_caches.clear();
     kerberos_params = std::move(new_kerberos_params);
