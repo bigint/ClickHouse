@@ -206,16 +206,19 @@ void RowPolicyCache::rowPolicyAddedOrChanged(const UUID & policy_id, const RowPo
     auto it = all_policies.find(policy_id);
     if (it == all_policies.end())
     {
-        it = all_policies.emplace(policy_id, PolicyInfo(new_policy)).first;
-    }
-    else
-    {
-        if (it->second.policy == new_policy)
-            return;
+        all_policies.emplace(policy_id, PolicyInfo(new_policy));
+        need_mix_filters = true;
+        return;
     }
 
-    auto & info = it->second;
-    info.setPolicy(new_policy);
+    if (it->second.policy == new_policy)
+        return;
+
+    /// Build every derived field before replacing the live metadata. `setPolicy` performs
+    /// allocations while parsing filters and names, so mutating the existing object directly
+    /// could otherwise leave fields from different policy generations after an exception.
+    PolicyInfo replacement(new_policy);
+    it->second = std::move(replacement);
     need_mix_filters = true;
 }
 
