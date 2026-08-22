@@ -99,4 +99,41 @@ TEST(Authentication, ScramCredentialsRejectOtherAuthenticationTypes)
         Authentication::areCredentialsValid(credentials, no_authentication, external_authenticators, client_info, settings),
         Authentication::CredentialsCheckResult::Fail);
 }
+
+TEST(Authentication, ScramCredentialsCompareCompleteProof)
+{
+    const std::string auth_message = "auth-message";
+    const AuthenticationData::Digest salted_password(32);
+    const auto client_key = hmacSHA256(salted_password, "Client Key");
+    const auto stored_key = encodeSHA256(client_key);
+    const auto client_signature = hmacSHA256(stored_key, auth_message);
+
+    String client_proof(client_key.size(), 0);
+    for (size_t i = 0; i != client_key.size(); ++i)
+        client_proof[i] = client_key[i] ^ client_signature[i];
+    const auto encoded_proof = base64Encode(client_proof);
+
+    AuthenticationData authentication_data{AuthenticationType::SCRAM_SHA256_PASSWORD};
+    authentication_data.setPasswordHashBinary(salted_password, std::nullopt, true);
+    ExternalAuthenticators external_authenticators;
+    ClientInfo client_info;
+    SettingsChanges settings;
+
+    auto check = [&](String proof)
+    {
+        ScramSHA256Credentials credentials{"user", proof, auth_message, 4096};
+        return Authentication::areCredentialsValid(
+            credentials, authentication_data, external_authenticators, client_info, settings);
+    };
+
+    EXPECT_EQ(check(encoded_proof), Authentication::CredentialsCheckResult::Success);
+
+    String wrong_first_byte = encoded_proof;
+    wrong_first_byte.front() ^= 1;
+    EXPECT_EQ(check(wrong_first_byte), Authentication::CredentialsCheckResult::Fail);
+
+    String wrong_last_byte = encoded_proof;
+    wrong_last_byte.back() ^= 1;
+    EXPECT_EQ(check(wrong_last_byte), Authentication::CredentialsCheckResult::Fail);
+}
 #endif

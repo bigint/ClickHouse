@@ -9,6 +9,7 @@
 #include <Common/Exception.h>
 #include <Common/SSHWrapper.h>
 #include <Common/typeid_cast.h>
+#include <Poco/DigestEngine.h>
 #include <Poco/SHA1Engine.h>
 #include <Access/Common/OneTimePassword.h>
 
@@ -57,7 +58,7 @@ namespace
             calculated_password_sha1[i] = static_cast<UInt8>(scrambled_password[i] ^ digest[i]);
 
         auto calculated_password_double_sha1 = Util::encodeSHA1(calculated_password_sha1);
-        return calculated_password_double_sha1 == password_double_sha1;
+        return Poco::DigestEngine::constantTimeEquals(calculated_password_double_sha1, password_double_sha1);
     }
 
     bool checkPasswordPlainTextMySQL(std::string_view scramble, std::string_view scrambled_password, const Digest & password_plaintext)
@@ -119,15 +120,8 @@ namespace
         const auto & password = authentication_method.getPasswordHashBinary();
         auto computed_client_proof = computeScramSHA256ClientProof(password, auth_message);
 
-        if (computed_client_proof.size() != client_proof.size())
-            return false;
-
-        for (size_t i = 0; i < computed_client_proof.size(); ++i)
-        {
-            if (static_cast<UInt8>(computed_client_proof[i]) != static_cast<UInt8>(client_proof[i]))
-                return false;
-        }
-        return true;
+        return Poco::DigestEngine::constantTimeEquals(
+            Util::stringToDigest(computed_client_proof), Util::stringToDigest(client_proof));
     }
 
     bool checkMySQLAuthentication(
@@ -205,26 +199,30 @@ namespace
             case AuthenticationType::PLAINTEXT_PASSWORD:
             {
                 const auto & password_plaintext = authentication_method.getPasswordHashBinary();
-                return Util::stringToDigest(password) == password_plaintext ? on_success : Authentication::CredentialsCheckResult::Fail;
+                return Poco::DigestEngine::constantTimeEquals(Util::stringToDigest(password), password_plaintext)
+                    ? on_success : Authentication::CredentialsCheckResult::Fail;
             }
             case AuthenticationType::SHA256_PASSWORD:
             {
                 const auto & password_sha256 = authentication_method.getPasswordHashBinary();
                 const auto & salt = authentication_method.getSalt();
                 String salted_password = String(password).append(salt);
-                return Util::encodeSHA256(salted_password) == password_sha256 ? on_success : Authentication::CredentialsCheckResult::Fail;
+                return Poco::DigestEngine::constantTimeEquals(Util::encodeSHA256(salted_password), password_sha256)
+                    ? on_success : Authentication::CredentialsCheckResult::Fail;
             }
             case AuthenticationType::SCRAM_SHA256_PASSWORD:
             {
                 const auto & password_scram_sha256 = authentication_method.getPasswordHashBinary();
                 const auto & salt = authentication_method.getSalt();
                 auto digest = Util::encodeScramSHA256(password, salt);
-                return digest == password_scram_sha256 ? on_success : Authentication::CredentialsCheckResult::Fail;
+                return Poco::DigestEngine::constantTimeEquals(digest, password_scram_sha256)
+                    ? on_success : Authentication::CredentialsCheckResult::Fail;
             }
             case AuthenticationType::DOUBLE_SHA1_PASSWORD:
             {
                 const auto & password_double_sha1 = authentication_method.getPasswordHashBinary();
-                return Util::encodeDoubleSHA1(password) == password_double_sha1 ? on_success : Authentication::CredentialsCheckResult::Fail;
+                return Poco::DigestEngine::constantTimeEquals(Util::encodeDoubleSHA1(password), password_double_sha1)
+                    ? on_success : Authentication::CredentialsCheckResult::Fail;
             }
             case AuthenticationType::LDAP:
             {
