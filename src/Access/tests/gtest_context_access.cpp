@@ -67,3 +67,37 @@ TEST(ContextAccess, RoleChangesRefreshQuotaAssignment)
         });
     EXPECT_TRUE(context_access->getQuotaUsages().empty());
 }
+
+TEST(ContextAccess, UserChangesResolveCompositeOwner)
+{
+    AccessControl access_control;
+    auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", access_control.getChangesNotifier(), true);
+    auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", access_control.getChangesNotifier(), true);
+    const auto user_id = UUIDHelpers::generateV4();
+
+    auto higher_priority_user = std::make_shared<User>();
+    higher_priority_user->setName("higher_priority");
+    higher_priority_storage->insert(user_id, higher_priority_user, false, true);
+
+    auto lower_priority_user = std::make_shared<User>();
+    lower_priority_user->setName("lower_priority");
+    lower_priority_storage->insert(user_id, lower_priority_user, false, true);
+
+    access_control.setStorages({higher_priority_storage, lower_priority_storage});
+    Settings settings;
+    ClientInfo client_info;
+    ContextAccessParams params(user_id, false, true, nullptr, nullptr, settings, "", client_info, {});
+    const auto context_access = access_control.getContextAccess(params);
+    EXPECT_EQ(context_access->getUserName(), "higher_priority");
+
+    lower_priority_storage->update(
+        user_id,
+        [](const AccessEntityPtr & entity, const UUID &)
+        {
+            auto updated = std::static_pointer_cast<User>(entity->clone());
+            updated->setName("lower_priority_updated");
+            return updated;
+        });
+    access_control.getChangesNotifier().sendNotifications();
+    EXPECT_EQ(context_access->getUserName(), "higher_priority");
+}

@@ -359,8 +359,9 @@ void ContextAccess::initialize()
             auto ptr = weak_ptr.lock();
             if (!ptr)
                 return;
-            /// All changes are for the same user id; the last one reflects its current state.
-            const auto & entity = changes.back().entity;
+            /// A nested lower-priority storage can emit the last change for an ID shadowed by
+            /// another storage. Resolve the current composite owner instead of trusting the payload.
+            const auto entity = ptr->access_control->tryRead(changes.back().id);
             UserPtr changed_user = entity ? typeid_cast<UserPtr>(entity) : nullptr;
             std::lock_guard lock2{ptr->mutex};
             ptr->setUser(changed_user);
