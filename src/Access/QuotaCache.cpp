@@ -46,12 +46,31 @@ void QuotaCache::IntervalsStore::setQuota(const QuotaPtr & quota_, const UUID & 
     std::lock_guard lock{mutex};
     const bool key_space_changed = quota->key_type != quota_->key_type || quota->ipv4_prefix_bits != quota_->ipv4_prefix_bits
         || quota->ipv6_prefix_bits != quota_->ipv6_prefix_bits;
+
+    if (!key_space_changed)
+    {
+        const auto previous_quota = quota;
+        const auto previous_quota_id = quota_id;
+        auto previous_key_to_intervals = key_to_intervals;
+        quota = quota_;
+        quota_id = quota_id_;
+        try
+        {
+            rebuildAllIntervals();
+        }
+        catch (...)
+        {
+            quota = previous_quota;
+            quota_id = previous_quota_id;
+            key_to_intervals = std::move(previous_key_to_intervals);
+            throw;
+        }
+        return;
+    }
+
     quota = quota_;
     quota_id = quota_id_;
-    if (key_space_changed)
-        key_to_intervals.clear();
-    else
-        rebuildAllIntervals();
+    key_to_intervals.clear();
 }
 
 
@@ -66,10 +85,10 @@ QuotaCache::QuotaInfo::QuotaInfo(const QuotaPtr & quota_, const UUID & quota_id_
 
 void QuotaCache::QuotaInfo::setQuota(const QuotaPtr & quota_, const UUID & quota_id_)
 {
+    intervals_store->setQuota(quota_, quota_id_);
     quota = quota_;
     quota_id = quota_id_;
     roles = &quota->to_roles;
-    intervals_store->setQuota(quota_, quota_id_);
 }
 
 

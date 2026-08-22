@@ -69,6 +69,38 @@ TEST(QuotaCache, PreservesPerNormalizedHashUsageOnUpdate)
     EXPECT_THROW(enabled_quota->usedPerNormalizedHash(42), Exception);
 }
 
+TEST(QuotaCache, FailedUpdatePreservesLiveIntervalStore)
+{
+    AccessControl access_control;
+    auto storage = std::make_shared<MemoryAccessStorage>("memory", access_control.getChangesNotifier(), true);
+    access_control.setStorages({storage});
+
+    auto quota = std::make_shared<Quota>();
+    quota->setName("normalized_hash_quota");
+    quota->key_type = QuotaKeyType::NORMALIZED_QUERY_HASH;
+    quota->to_roles = RolesOrUsersSet::AllTag{};
+    auto & limits = quota->all_limits.emplace_back();
+    limits.duration = std::chrono::minutes(1);
+    limits.max[static_cast<size_t>(QuotaType::QUERIES_PER_NORMALIZED_HASH)] = 100;
+    const auto quota_id = access_control.insert(quota);
+
+    auto enabled_quota = access_control.getEnabledQuota(
+        UUIDHelpers::generateV4(), "user", {}, std::make_shared<Poco::Net::IPAddress>("127.0.0.1"), "", "");
+    enabled_quota->usedPerNormalizedHash(42);
+
+    access_control.update(
+        quota_id,
+        [](const AccessEntityPtr & entity, const UUID &)
+        {
+            auto updated_quota = std::static_pointer_cast<Quota>(entity->clone());
+            updated_quota->all_limits.front().duration = std::chrono::seconds::zero();
+            return updated_quota;
+        });
+
+    /// The rejected update must not leak into the resolver captured by the live enabled quota.
+    EXPECT_NO_THROW(enabled_quota->usedPerNormalizedHash(43));
+}
+
 TEST(QuotaCache, NormalizedHashKeySharesPerHashLimitAcrossUsers)
 {
     AccessControl access_control;
