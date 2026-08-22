@@ -5,6 +5,9 @@
 #include <Common/SettingConstraintWritability.h>
 #include <Common/SettingSource.h>
 
+#include <atomic>
+#include <memory>
+#include <mutex>
 #include <unordered_map>
 
 namespace Poco::Util
@@ -21,6 +24,34 @@ class SettingsChanges;
 class AccessControl;
 struct AlterSettingsProfileElements;
 class SettingsProfileElements;
+
+
+/// Configuration shared by settings constraints and `AccessControl`.
+/// It is kept alive by constraint snapshots which can outlive `AccessControl`.
+class SettingsConstraintsPolicy
+{
+public:
+    void setCustomSettingsPrefixes(const Strings & prefixes);
+    bool isSettingNameAllowed(std::string_view setting_name) const;
+    void checkSettingNameIsAllowed(std::string_view setting_name) const;
+
+    void setReplacePrevious(bool enable) { replace_previous = enable; }
+    bool doesReplacePrevious() const { return replace_previous; }
+
+    void setAllowTierSettings(UInt32 value);
+    UInt32 getAllowTierSettings() const;
+    bool getAllowExperimentalTierSettings() const { return allow_experimental_tier_settings; }
+    bool getAllowPrivatePreviewTierSettings() const { return allow_private_preview_tier_settings; }
+    bool getAllowBetaTierSettings() const { return allow_beta_tier_settings; }
+
+private:
+    Strings custom_settings_prefixes TSA_GUARDED_BY(custom_settings_prefixes_mutex);
+    mutable std::mutex custom_settings_prefixes_mutex;
+    std::atomic_bool replace_previous = false;
+    std::atomic_bool allow_experimental_tier_settings = true;
+    std::atomic_bool allow_private_preview_tier_settings = true;
+    std::atomic_bool allow_beta_tier_settings = true;
+};
 
 
 /** Checks if specified changes of settings are allowed or not.
@@ -183,7 +214,7 @@ private:
     /// we store only resolved aliases inside the Constraints so to correctly search the container we always need to use resolved name
     std::unordered_map<std::string, std::string, StringHash, std::equal_to<>> settings_alias_cache;
 
-    const AccessControl * access_control;
+    std::shared_ptr<SettingsConstraintsPolicy> policy;
 };
 
 }

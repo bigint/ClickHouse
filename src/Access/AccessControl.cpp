@@ -1,34 +1,33 @@
+#include <Access/AccessBackup.h>
+#include <Access/AccessChangesNotifier.h>
 #include <Access/AccessControl.h>
-#include <Access/MultipleAccessStorage.h>
-#include <Access/MemoryAccessStorage.h>
-#include <Access/ReplicatedAccessStorage.h>
-#include <Access/UsersConfigAccessStorage.h>
-#include <Access/DiskAccessStorage.h>
-#include <Access/LDAPAccessStorage.h>
 #include <Access/ContextAccess.h>
-#include <Access/EnabledSettings.h>
+#include <Access/DiskAccessStorage.h>
 #include <Access/EnabledRolesInfo.h>
-#include <Access/RoleCache.h>
-#include <Access/RowPolicyCache.h>
+#include <Access/EnabledSettings.h>
+#include <Access/ExternalAuthenticators.h>
+#include <Access/LDAPAccessStorage.h>
+#include <Access/MemoryAccessStorage.h>
+#include <Access/MultipleAccessStorage.h>
 #include <Access/QuotaCache.h>
 #include <Access/QuotaUsage.h>
+#include <Access/ReplicatedAccessStorage.h>
+#include <Access/RoleCache.h>
+#include <Access/RowPolicyCache.h>
+#include <Access/SettingsConstraints.h>
 #include <Access/SettingsProfilesCache.h>
 #include <Access/User.h>
-#include <Access/ExternalAuthenticators.h>
-#include <Access/AccessChangesNotifier.h>
-#include <Access/AccessBackup.h>
-#include <Access/resolveSetting.h>
+#include <Access/UsersConfigAccessStorage.h>
 #include <Backups/BackupEntriesCollector.h>
 #include <Backups/RestorerFromBackup.h>
 #include <Core/Settings.h>
-#include <base/range.h>
 #include <IO/Operators.h>
+#include <base/range.h>
 #include <Common/Exception.h>
 #include <Common/re2.h>
 
 #include <filesystem>
 #include <mutex>
-#include <boost/algorithm/string/join.hpp>
 #include <Poco/AccessExpireCache.h>
 
 
@@ -36,13 +35,12 @@ namespace DB
 {
 namespace ErrorCodes
 {
-    extern const int UNKNOWN_ELEMENT_IN_CONFIG;
-    extern const int UNKNOWN_SETTING;
-    extern const int AUTHENTICATION_FAILED;
-    extern const int REQUIRED_SECOND_FACTOR;
-    extern const int REQUIRED_PASSWORD;
-    extern const int CANNOT_COMPILE_REGEXP;
-    extern const int BAD_ARGUMENTS;
+extern const int UNKNOWN_ELEMENT_IN_CONFIG;
+extern const int AUTHENTICATION_FAILED;
+extern const int REQUIRED_SECOND_FACTOR;
+extern const int REQUIRED_PASSWORD;
+extern const int CANNOT_COMPILE_REGEXP;
+extern const int BAD_ARGUMENTS;
 }
 
 namespace
@@ -91,53 +89,6 @@ public:
 private:
     const AccessControl & access_control;
     Poco::AccessExpireCache<ContextAccess::Params, std::shared_ptr<const ContextAccess>> cache;
-};
-
-
-class AccessControl::CustomSettingsPrefixes
-{
-public:
-    void registerPrefixes(const Strings & prefixes_)
-    {
-        std::lock_guard lock{mutex};
-        registered_prefixes = prefixes_;
-    }
-
-    bool isSettingNameAllowed(std::string_view setting_name) const
-    {
-        if (settingIsBuiltin(setting_name))
-            return true;
-
-        std::lock_guard lock{mutex};
-        for (const auto & prefix : registered_prefixes)
-        {
-            if (setting_name.starts_with(prefix))
-                return true;
-        }
-
-        return false;
-    }
-
-    void checkSettingNameIsAllowed(std::string_view setting_name) const
-    {
-        if (isSettingNameAllowed(setting_name))
-            return;
-
-        std::lock_guard lock{mutex};
-        if (!registered_prefixes.empty())
-        {
-            throw Exception(ErrorCodes::UNKNOWN_SETTING,
-                            "Setting {} is neither a builtin setting nor started with the prefix '{}"
-                            "' registered for user-defined settings",
-                            String{setting_name}, boost::algorithm::join(registered_prefixes, "' or '"));
-        }
-
-        throw Exception(ErrorCodes::UNKNOWN_SETTING, "Unknown setting '{}'", String{setting_name});
-    }
-
-private:
-    Strings registered_prefixes TSA_GUARDED_BY(mutex);
-    mutable std::mutex mutex;
 };
 
 
@@ -245,16 +196,16 @@ private:
 
 
 AccessControl::AccessControl()
-    : MultipleAccessStorage("user directories"),
-      context_access_cache(std::make_unique<ContextAccessCache>(*this)),
-      role_cache(std::make_unique<RoleCache>(*this, 600)),
-      row_policy_cache(std::make_unique<RowPolicyCache>(*this)),
-      quota_cache(std::make_unique<QuotaCache>(*this)),
-      settings_profiles_cache(std::make_unique<SettingsProfilesCache>(*this)),
-      external_authenticators(std::make_unique<ExternalAuthenticators>()),
-      custom_settings_prefixes(std::make_unique<CustomSettingsPrefixes>()),
-      changes_notifier(std::make_unique<AccessChangesNotifier>()),
-      password_rules(std::make_unique<PasswordComplexityRules>())
+    : MultipleAccessStorage("user directories")
+    , context_access_cache(std::make_unique<ContextAccessCache>(*this))
+    , role_cache(std::make_unique<RoleCache>(*this, 600))
+    , row_policy_cache(std::make_unique<RowPolicyCache>(*this))
+    , quota_cache(std::make_unique<QuotaCache>(*this))
+    , settings_profiles_cache(std::make_unique<SettingsProfilesCache>(*this))
+    , external_authenticators(std::make_unique<ExternalAuthenticators>())
+    , settings_constraints_policy(std::make_shared<SettingsConstraintsPolicy>())
+    , changes_notifier(std::make_unique<AccessChangesNotifier>())
+    , password_rules(std::make_unique<PasswordComplexityRules>())
 {
 }
 
@@ -718,7 +669,7 @@ void AccessControl::setDefaultProfileName(const String & default_profile_name)
 
 void AccessControl::setCustomSettingsPrefixes(const Strings & prefixes)
 {
-    custom_settings_prefixes->registerPrefixes(prefixes);
+    settings_constraints_policy->setCustomSettingsPrefixes(prefixes);
 }
 
 void AccessControl::setCustomSettingsPrefixes(const String & comma_separated_prefixes)
@@ -730,12 +681,22 @@ void AccessControl::setCustomSettingsPrefixes(const String & comma_separated_pre
 
 bool AccessControl::isSettingNameAllowed(const std::string_view setting_name) const
 {
-    return custom_settings_prefixes->isSettingNameAllowed(setting_name);
+    return settings_constraints_policy->isSettingNameAllowed(setting_name);
 }
 
 void AccessControl::checkSettingNameIsAllowed(const std::string_view setting_name) const
 {
-    custom_settings_prefixes->checkSettingNameIsAllowed(setting_name);
+    settings_constraints_policy->checkSettingNameIsAllowed(setting_name);
+}
+
+void AccessControl::setSettingsConstraintsReplacePrevious(bool enable)
+{
+    settings_constraints_policy->setReplacePrevious(enable);
+}
+
+bool AccessControl::doesSettingsConstraintsReplacePrevious() const
+{
+    return settings_constraints_policy->doesReplacePrevious();
 }
 
 void AccessControl::setImplicitNoPasswordAllowed(bool allow_implicit_no_password_)
@@ -965,39 +926,31 @@ const ExternalAuthenticators & AccessControl::getExternalAuthenticators() const
 
 void AccessControl::allowAllSettings()
 {
-    custom_settings_prefixes->registerPrefixes({""});
+    settings_constraints_policy->setCustomSettingsPrefixes({""});
 }
 
 void AccessControl::setAllowTierSettings(UInt32 value)
 {
-    allow_experimental_tier_settings = value == 0;
-    allow_private_preview_tier_settings = value <= 1;
-    allow_beta_tier_settings = value <= 2;
+    settings_constraints_policy->setAllowTierSettings(value);
 }
 
 UInt32 AccessControl::getAllowTierSettings() const
 {
-    if (allow_experimental_tier_settings)
-        return 0;
-    if (allow_private_preview_tier_settings)
-        return 1;
-    if (allow_beta_tier_settings)
-        return 2;
-    return 3;
+    return settings_constraints_policy->getAllowTierSettings();
 }
 
 bool AccessControl::getAllowExperimentalTierSettings() const
 {
-    return allow_experimental_tier_settings;
+    return settings_constraints_policy->getAllowExperimentalTierSettings();
 }
 
 bool AccessControl::getAllowPrivatePreviewTierSettings() const
 {
-    return allow_private_preview_tier_settings;
+    return settings_constraints_policy->getAllowPrivatePreviewTierSettings();
 }
 
 bool AccessControl::getAllowBetaTierSettings() const
 {
-    return allow_beta_tier_settings;
+    return settings_constraints_policy->getAllowBetaTierSettings();
 }
 }

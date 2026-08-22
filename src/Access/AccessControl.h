@@ -48,6 +48,7 @@ struct SettingsProfilesInfo;
 class EnabledSettings;
 class SettingsProfilesCache;
 class SettingsProfileElements;
+class SettingsConstraintsPolicy;
 class ClientInfo;
 class ExternalAuthenticators;
 struct Settings;
@@ -207,8 +208,8 @@ public:
     void setSelectFromInformationSchemaRequiresGrant(bool enable) { select_from_information_schema_requires_grant = enable; }
     bool doesSelectFromInformationSchemaRequireGrant() const { return select_from_information_schema_requires_grant; }
 
-    void setSettingsConstraintsReplacePrevious(bool enable) { settings_constraints_replace_previous = enable; }
-    bool doesSettingsConstraintsReplacePrevious() const { return settings_constraints_replace_previous; }
+    void setSettingsConstraintsReplacePrevious(bool enable);
+    bool doesSettingsConstraintsReplacePrevious() const;
 
     void setTableEnginesRequireGrant(bool enable) { table_engines_require_grant = enable; }
     bool doesTableEnginesRequireGrant() const { return table_engines_require_grant; }
@@ -280,8 +281,9 @@ public:
     bool getAllowBetaTierSettings() const;
 
 private:
+    friend class SettingsConstraints;
+
     class ContextAccessCache;
-    class CustomSettingsPrefixes;
     class PasswordComplexityRules;
 
     bool insertImpl(const UUID & id, const AccessEntityPtr & entity, bool replace_if_exists, bool throw_if_exists, UUID * conflicting_id) override;
@@ -295,7 +297,7 @@ private:
     std::unique_ptr<QuotaCache> quota_cache;
     std::unique_ptr<SettingsProfilesCache> settings_profiles_cache;
     std::unique_ptr<ExternalAuthenticators> external_authenticators;
-    std::unique_ptr<CustomSettingsPrefixes> custom_settings_prefixes;
+    std::shared_ptr<SettingsConstraintsPolicy> settings_constraints_policy;
     std::unique_ptr<AccessChangesNotifier> changes_notifier;
     std::unique_ptr<PasswordComplexityRules> password_rules;
     std::atomic_bool allow_plaintext_password = true;
@@ -307,14 +309,10 @@ private:
     std::atomic_bool select_from_system_db_requires_grant = false;
     std::atomic_bool user_query_log_enabled = false;
     std::atomic_bool select_from_information_schema_requires_grant = false;
-    std::atomic_bool settings_constraints_replace_previous = false;
     std::atomic_bool table_engines_require_grant = false;
     std::atomic_bool throw_on_invalid_replicated_access_entities = false;
     std::atomic_int bcrypt_workfactor = 12;
     std::atomic<AuthenticationType> default_password_type = AuthenticationType::SHA256_PASSWORD;
-    std::atomic_bool allow_experimental_tier_settings = true;
-    std::atomic_bool allow_private_preview_tier_settings = true;
-    std::atomic_bool allow_beta_tier_settings = true;
     std::atomic_bool enable_user_name_access_type = true;
     std::atomic_bool enable_read_write_grants = false;
     std::atomic_bool allow_impersonate_user = false;

@@ -16,6 +16,11 @@ struct SettingsConstraintsAndProfileIDs
     std::vector<UUID> enabled_profiles;
 
     explicit SettingsConstraintsAndProfileIDs(const AccessControl & access_control_) : constraints(access_control_) {}
+    explicit SettingsConstraintsAndProfileIDs(const SettingsConstraints & constraints_)
+        : constraints(constraints_)
+    {
+        constraints.clear();
+    }
 };
 
 }

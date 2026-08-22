@@ -647,8 +647,7 @@ std::shared_ptr<const SettingsProfilesInfo> ContextAccess::getDefaultProfileInfo
         throw Exception(ErrorCodes::LOGICAL_ERROR, "ContextAccess is inconsistent (bug 55041)");
     if (enabled_settings)
         return enabled_settings->getInfo();
-    static const auto everything_by_default = std::make_shared<SettingsProfilesInfo>(*access_control);
-    return everything_by_default;
+    return std::make_shared<SettingsProfilesInfo>(*access_control);
 }
 
 

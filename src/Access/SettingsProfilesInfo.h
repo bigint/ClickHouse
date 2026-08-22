@@ -30,7 +30,7 @@ struct SettingsProfilesInfo
     std::unordered_map<UUID, String> names_of_profiles;
 
     explicit SettingsProfilesInfo(const AccessControl & access_control_)
-        : constraints(access_control_), access_control(access_control_)
+        : constraints(access_control_)
     {
     }
 
@@ -41,9 +41,6 @@ struct SettingsProfilesInfo
     friend bool operator !=(const SettingsProfilesInfo & lhs, const SettingsProfilesInfo & rhs) { return !(lhs == rhs); }
 
     Strings getProfileNames() const;
-
-private:
-    const AccessControl & access_control;
 };
 
 }

@@ -23,7 +23,7 @@ bool operator==(const SettingsProfilesInfo & lhs, const SettingsProfilesInfo & r
 std::shared_ptr<const SettingsConstraintsAndProfileIDs>
 SettingsProfilesInfo::getConstraintsAndProfileIDs(const std::shared_ptr<const SettingsConstraintsAndProfileIDs> & previous) const
 {
-    auto res = std::make_shared<SettingsConstraintsAndProfileIDs>(access_control);
+    auto res = std::make_shared<SettingsConstraintsAndProfileIDs>(constraints);
     res->current_profiles = profiles;
 
     if (previous)
@@ -61,13 +61,7 @@ Strings SettingsProfilesInfo::getProfileNames() const
             result.push_back(names_it->second);
         }
         else
-        {
-            if (const auto name = access_control.tryReadName(profile_uuid))
-                // We could've updated cache here, but it is a very rare case, so don't bother.
-                result.push_back(*name);
-            else
-                throw Exception(ErrorCodes::LOGICAL_ERROR, "Unable to get profile name for {}", toString(profile_uuid));
-        }
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "Unable to get profile name for {}", toString(profile_uuid));
     }
 
     return result;

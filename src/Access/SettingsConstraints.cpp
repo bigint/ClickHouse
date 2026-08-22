@@ -12,6 +12,7 @@
 #include <bitset>
 #include <string_view>
 #include <unordered_map>
+#include <boost/algorithm/string/join.hpp>
 
 namespace DB
 {
@@ -94,7 +95,63 @@ bool isAlwaysChangeableInReadonly(std::string_view name)
 
 }
 
-SettingsConstraints::SettingsConstraints(const AccessControl & access_control_) : access_control(&access_control_)
+void SettingsConstraintsPolicy::setCustomSettingsPrefixes(const Strings & prefixes)
+{
+    std::lock_guard lock{custom_settings_prefixes_mutex};
+    custom_settings_prefixes = prefixes;
+}
+
+bool SettingsConstraintsPolicy::isSettingNameAllowed(std::string_view setting_name) const
+{
+    if (settingIsBuiltin(setting_name))
+        return true;
+
+    std::lock_guard lock{custom_settings_prefixes_mutex};
+    for (const auto & prefix : custom_settings_prefixes)
+    {
+        if (setting_name.starts_with(prefix))
+            return true;
+    }
+    return false;
+}
+
+void SettingsConstraintsPolicy::checkSettingNameIsAllowed(std::string_view setting_name) const
+{
+    if (isSettingNameAllowed(setting_name))
+        return;
+
+    std::lock_guard lock{custom_settings_prefixes_mutex};
+    if (!custom_settings_prefixes.empty())
+    {
+        throw Exception(
+            ErrorCodes::UNKNOWN_SETTING,
+            "Setting {} is neither a builtin setting nor started with the prefix '{}' registered for user-defined settings",
+            String{setting_name},
+            boost::algorithm::join(custom_settings_prefixes, "' or '"));
+    }
+    throw Exception(ErrorCodes::UNKNOWN_SETTING, "Unknown setting '{}'", String{setting_name});
+}
+
+void SettingsConstraintsPolicy::setAllowTierSettings(UInt32 value)
+{
+    allow_experimental_tier_settings = value == 0;
+    allow_private_preview_tier_settings = value <= 1;
+    allow_beta_tier_settings = value <= 2;
+}
+
+UInt32 SettingsConstraintsPolicy::getAllowTierSettings() const
+{
+    if (allow_experimental_tier_settings)
+        return 0;
+    if (allow_private_preview_tier_settings)
+        return 1;
+    if (allow_beta_tier_settings)
+        return 2;
+    return 3;
+}
+
+SettingsConstraints::SettingsConstraints(const AccessControl & access_control_)
+    : policy(access_control_.settings_constraints_policy)
 {
 }
 
@@ -153,7 +210,7 @@ void SettingsConstraints::get(const MergeTreeSettings &, std::string_view short_
 
 void SettingsConstraints::merge(const SettingsConstraints & other)
 {
-    if (access_control->doesSettingsConstraintsReplacePrevious())
+    if (policy->doesReplacePrevious())
     {
         for (const auto & [other_name, other_constraint] : other.constraints)
         {
@@ -326,7 +383,7 @@ bool SettingsConstraints::checkImpl(const Settings & current_settings,
     {
         try
         {
-            access_control->checkSettingNameIsAllowed(setting_name);
+            policy->checkSettingNameIsAllowed(setting_name);
         }
         catch (Exception & e)
         {
@@ -340,7 +397,7 @@ bool SettingsConstraints::checkImpl(const Settings & current_settings,
             throw;
         }
     }
-    else if (!access_control->isSettingNameAllowed(setting_name))
+    else if (!policy->isSettingNameAllowed(setting_name))
         return false;
 
     Field new_value = getNewValueToCheck(current_settings, change, ignore_unchanged_settings, reaction == THROW_ON_VIOLATION);
@@ -511,34 +568,31 @@ SettingsConstraints::Checker SettingsConstraints::getChecker(const Settings & cu
     if (current_settings[Setting::readonly] > 1 && resolved_name == "readonly")
         return Checker(PreformattedMessage::create("Cannot modify 'readonly' setting in readonly mode"), ErrorCodes::READONLY);
 
-    if (access_control)
+    bool allowed_experimental = policy->getAllowExperimentalTierSettings();
+    bool allowed_private_preview = policy->getAllowPrivatePreviewTierSettings();
+    bool allowed_beta = policy->getAllowBetaTierSettings();
+    if (!allowed_experimental || !allowed_private_preview || !allowed_beta)
     {
-        bool allowed_experimental = access_control->getAllowExperimentalTierSettings();
-        bool allowed_private_preview = access_control->getAllowPrivatePreviewTierSettings();
-        bool allowed_beta = access_control->getAllowBetaTierSettings();
-        if (!allowed_experimental || !allowed_private_preview || !allowed_beta)
-        {
-            auto setting_tier = current_settings.getTier(resolved_name);
-            if (setting_tier == SettingsTierType::EXPERIMENTAL && !allowed_experimental)
-                return Checker(
-                    PreformattedMessage::create(
-                        "Cannot modify setting '{}'. Changes to EXPERIMENTAL settings are disabled in the server config ('allow_feature_tier')",
-                        setting_name),
-                    ErrorCodes::READONLY);
-            if (setting_tier == SettingsTierType::PRIVATE_PREVIEW && !allowed_private_preview)
-                return Checker(
-                    PreformattedMessage::create(
-                        "Cannot modify setting '{}'. Changes to PRIVATE PREVIEW settings are disabled in the server config "
-                        "('allow_feature_tier')",
-                        setting_name),
-                    ErrorCodes::READONLY);
-            if (setting_tier == SettingsTierType::BETA && !allowed_beta)
-                return Checker(
-                    PreformattedMessage::create(
-                        "Cannot modify setting '{}'. Changes to BETA settings are disabled in the server config ('allow_feature_tier')",
-                        setting_name),
-                    ErrorCodes::READONLY);
-        }
+        auto setting_tier = current_settings.getTier(resolved_name);
+        if (setting_tier == SettingsTierType::EXPERIMENTAL && !allowed_experimental)
+            return Checker(
+                PreformattedMessage::create(
+                    "Cannot modify setting '{}'. Changes to EXPERIMENTAL settings are disabled in the server config ('allow_feature_tier')",
+                    setting_name),
+                ErrorCodes::READONLY);
+        if (setting_tier == SettingsTierType::PRIVATE_PREVIEW && !allowed_private_preview)
+            return Checker(
+                PreformattedMessage::create(
+                    "Cannot modify setting '{}'. Changes to PRIVATE PREVIEW settings are disabled in the server config "
+                    "('allow_feature_tier')",
+                    setting_name),
+                ErrorCodes::READONLY);
+        if (setting_tier == SettingsTierType::BETA && !allowed_beta)
+            return Checker(
+                PreformattedMessage::create(
+                    "Cannot modify setting '{}'. Changes to BETA settings are disabled in the server config ('allow_feature_tier')",
+                    setting_name),
+                ErrorCodes::READONLY);
     }
 
     auto it = constraints.find(resolved_name);
