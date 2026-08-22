@@ -59,4 +59,15 @@ TEST(RolesOrUsersSet, CopyDependenciesReplacesMembership)
     destination.copyDependenciesFrom(excluded, {id});
     EXPECT_FALSE(destination.match(id));
     EXPECT_FALSE(destination.ids.contains(id));
+
+    RolesOrUsersSet absent;
+    destination = included;
+    destination.copyDependenciesFrom(absent, {id});
+    EXPECT_FALSE(destination.ids.contains(id));
+    EXPECT_FALSE(destination.except_ids.contains(id));
+
+    destination = excluded;
+    destination.copyDependenciesFrom(absent, {id});
+    EXPECT_FALSE(destination.ids.contains(id));
+    EXPECT_FALSE(destination.except_ids.contains(id));
 }

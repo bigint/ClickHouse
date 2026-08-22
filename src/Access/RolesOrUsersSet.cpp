@@ -370,6 +370,11 @@ void RolesOrUsersSet::copyDependenciesFrom(const RolesOrUsersSet & src, const st
             except_ids.emplace(id);
             ids.erase(id);
         }
+        else
+        {
+            ids.erase(id);
+            except_ids.erase(id);
+        }
     }
 }
 
