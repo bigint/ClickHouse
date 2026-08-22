@@ -12,6 +12,8 @@
 #include <Parsers/CommonParsers.h>
 #include <Access/IAccessStorage.h>
 
+#include <limits>
+
 
 namespace DB
 {
@@ -75,10 +77,20 @@ namespace
                 return false;
 
             const auto * literal = ast->as<ASTLiteral>();
-            if (!literal || literal->value.getType() != Field::Types::UInt64)
+            if (!literal)
                 return false;
 
-            priority = literal->value.safeGet<UInt64>();
+            if (literal->value.getType() == Field::Types::Int64)
+                priority = literal->value.safeGet<Int64>();
+            else if (literal->value.getType() == Field::Types::UInt64)
+            {
+                const auto unsigned_priority = literal->value.safeGet<UInt64>();
+                if (unsigned_priority > static_cast<UInt64>(std::numeric_limits<Int64>::max()))
+                    return false;
+                priority = static_cast<Int64>(unsigned_priority);
+            }
+            else
+                return false;
             return true;
         });
     }

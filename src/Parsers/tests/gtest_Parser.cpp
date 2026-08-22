@@ -762,6 +762,14 @@ INSTANTIATE_TEST_SUITE_P(ParserCreateMaskingPolicyQuery, ParserTest,
             "CREATE MASKING POLICY p ON db.t UPDATE email = '***' TO ALL"
         },
         {
+            "CREATE MASKING POLICY p ON db.t UPDATE email = '***' TO ALL PRIORITY -7",
+            "CREATE MASKING POLICY p ON db.t UPDATE email = '***' TO ALL PRIORITY -7"
+        },
+        {
+            "CREATE MASKING POLICY p ON db.t UPDATE email = '***' TO ALL PRIORITY 18446744073709551615",
+            nullptr
+        },
+        {
             "CREATE MASKING POLICY p ON db.t TO ALL",
             nullptr  // missing UPDATE clause
         }
