@@ -47,6 +47,15 @@ TEST(AuthenticationData, NoAuthenticationRoundTripPreservesValidUntil)
     EXPECT_EQ(restored.getValidUntil(), original.getValidUntil());
 }
 
+TEST(AuthenticationData, ValidUntilRejectsTrailingCharacters)
+{
+    ASTAuthenticationData ast;
+    ast.type = AuthenticationType::NO_AUTHENTICATION;
+    ast.valid_until = make_intrusive<ASTLiteral>(String{"2026-08-23 12:00:00 trailing"});
+
+    EXPECT_THROW(AuthenticationData::fromAST(ast, nullptr, false), Exception);
+}
+
 TEST(AuthenticationData, EmptyPlaintextPasswordRoundTrips)
 {
     AuthenticationData original{AuthenticationType::PLAINTEXT_PASSWORD};

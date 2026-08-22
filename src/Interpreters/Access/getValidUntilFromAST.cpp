@@ -32,6 +32,8 @@ namespace DB
             readDateTimeText(time, in);
         }
 
+        assertEOF(in);
+
         return time;
     }
 }
