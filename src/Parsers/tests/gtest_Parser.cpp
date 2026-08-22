@@ -73,6 +73,23 @@ TEST(ParserCreateUserQuery, CloneOwnsGlobalValidUntil)
     EXPECT_EQ(original->getTreeHash(false), cloned->getTreeHash(false));
 }
 
+TEST(ParserCreateUserQuery, CloneOwnsAuthenticationMethodValidUntil)
+{
+    const String query = "CREATE USER user1 IDENTIFIED WITH no_password VALID UNTIL '2030-01-01 00:00:00'";
+    ParserCreateUserQuery parser;
+    const ASTPtr original = parseQuery(parser, query, "", 0, 0, 0);
+    ASSERT_TRUE(original);
+    const ASTPtr cloned = original->clone();
+
+    const auto & original_methods = original->as<const ASTCreateUserQuery &>().authentication_methods;
+    const auto & cloned_methods = cloned->as<const ASTCreateUserQuery &>().authentication_methods;
+    ASSERT_EQ(original_methods.size(), 1u);
+    ASSERT_EQ(cloned_methods.size(), 1u);
+    ASSERT_TRUE(original_methods.front()->valid_until);
+    ASSERT_TRUE(cloned_methods.front()->valid_until);
+    EXPECT_NE(original_methods.front()->valid_until.get(), cloned_methods.front()->valid_until.get());
+}
+
 /// The output-option children (INTO OUTFILE, COMPRESSION, FORMAT, SETTINGS) must end up
 /// in the same canonical order whether the AST is freshly parsed, cloned, or obtained by
 /// a format+reparse roundtrip. Otherwise the tree hash differs across these paths, which
