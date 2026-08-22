@@ -97,9 +97,7 @@ class AccessControl::PasswordComplexityRules
 public:
     void setPasswordComplexityRulesFromConfig(const Poco::Util::AbstractConfiguration & config_)
     {
-        std::lock_guard lock{mutex};
-
-        rules.clear();
+        Rules new_rules;
 
         if (config_.has("password_complexity"))
         {
@@ -119,10 +117,13 @@ public:
                             "Password complexity pattern {} cannot be compiled: {}",
                             pattern, matcher->error());
 
-                    rules.push_back({std::move(matcher), std::move(pattern), std::move(message)});
+                    new_rules.push_back({std::move(matcher), std::move(pattern), std::move(message)});
                 }
             }
         }
+
+        std::lock_guard lock{mutex};
+        rules = std::move(new_rules);
     }
 
     void setPasswordComplexityRules(const std::vector<std::pair<String, String>> & rules_)
