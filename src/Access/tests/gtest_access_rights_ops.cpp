@@ -5,6 +5,18 @@
 
 using namespace DB;
 
+TEST(AccessRightsElement, EqualityIncludesFilter)
+{
+    AccessRightsElement first{AccessType::READ};
+    first.parameter = "S3";
+    first.filter = "first";
+
+    auto second = first;
+    second.filter = "second";
+
+    EXPECT_NE(first, second);
+}
+
 TEST(AccessRights, Radix)
 {
     AccessRights root;
