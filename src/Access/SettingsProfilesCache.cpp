@@ -175,6 +175,8 @@ void SettingsProfilesCache::mergeSettingsAndConstraints()
     /// `mutex` is already locked.
     ProfileEvents::increment(ProfileEvents::SettingsProfileCacheRecalculations);
     Stopwatch watch;
+    std::vector<std::pair<std::shared_ptr<EnabledSettings>, std::shared_ptr<const SettingsProfilesInfo>>> recalculated;
+    recalculated.reserve(enabled_settings.size());
     for (auto i = enabled_settings.begin(), e = enabled_settings.end(); i != e;)
     {
         auto enabled = i->second.lock();
@@ -182,10 +184,13 @@ void SettingsProfilesCache::mergeSettingsAndConstraints()
             i = enabled_settings.erase(i);
         else
         {
-            mergeSettingsAndConstraintsFor(*enabled);
+            recalculated.emplace_back(enabled, calculateSettingsAndConstraintsFor(*enabled));
             ++i;
         }
     }
+
+    for (const auto & [enabled, info] : recalculated)
+        enabled->setInfo(info);
 
     const auto elapsed_ms = watch.elapsedMilliseconds();
     ProfileEvents::increment(ProfileEvents::SettingsProfileCacheRecalculationMicroseconds, watch.elapsedMicroseconds());
@@ -197,7 +202,7 @@ void SettingsProfilesCache::mergeSettingsAndConstraints()
 }
 
 
-void SettingsProfilesCache::mergeSettingsAndConstraintsFor(EnabledSettings & enabled) const
+std::shared_ptr<const SettingsProfilesInfo> SettingsProfilesCache::calculateSettingsAndConstraintsFor(const EnabledSettings & enabled) const
 {
     SettingsProfileElements merged_settings;
     if (default_profile_id)
@@ -225,7 +230,7 @@ void SettingsProfilesCache::mergeSettingsAndConstraintsFor(EnabledSettings & ena
     info->settings = merged_settings.toSettingsChanges();
     info->constraints = merged_settings.toSettingsConstraints(access_control);
 
-    enabled.setInfo(std::move(info));
+    return info;
 }
 
 
@@ -299,7 +304,7 @@ std::shared_ptr<const EnabledSettings> SettingsProfilesCache::getEnabledSettings
 
     std::shared_ptr<EnabledSettings> res(new EnabledSettings(params));
     enabled_settings.emplace(std::move(params), res);
-    mergeSettingsAndConstraintsFor(*res);
+    res->setInfo(calculateSettingsAndConstraintsFor(*res));
     return res;
 }
 

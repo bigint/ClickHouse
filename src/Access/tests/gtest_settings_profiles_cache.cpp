@@ -12,6 +12,7 @@
 #include <Core/UUID.h>
 #include <Parsers/Access/ASTSettingsProfileElement.h>
 
+#include <utility>
 
 using namespace DB;
 
@@ -183,6 +184,68 @@ TEST(SettingsProfilesCache, FailedDefaultProfileChangeCanBeRetried)
     EXPECT_THROW(access_control.setDefaultProfileName("invalid"), Exception);
     EXPECT_EQ(std::vector<UUID>{valid_profile_id}, enabled_settings->getInfo()->profiles_with_implicit);
     EXPECT_THROW(access_control.setDefaultProfileName("invalid"), Exception);
+}
+
+TEST(SettingsProfilesCache, FailedBatchRefreshDoesNotPublishPartialResults)
+{
+    AccessControl access_control;
+    auto storage = std::make_shared<MemoryAccessStorage>("memory", access_control.getChangesNotifier(), true);
+    access_control.setStorages({storage});
+
+    auto first_profile = std::make_shared<SettingsProfile>();
+    first_profile->setName("first");
+    auto & first_setting = first_profile->elements.emplace_back();
+    first_setting.setting_name = "max_threads";
+    first_setting.value = Field{UInt64{1}};
+    const auto first_profile_id = access_control.insert(first_profile);
+
+    auto second_profile = std::make_shared<SettingsProfile>();
+    second_profile->setName("second");
+    auto & second_setting = second_profile->elements.emplace_back();
+    second_setting.setting_name = "max_block_size";
+    second_setting.value = Field{UInt64{10}};
+    const auto second_profile_id = access_control.insert(second_profile);
+
+    UUID first_user_id = UUIDHelpers::generateV4();
+    UUID second_user_id = UUIDHelpers::generateV4();
+    if (second_user_id < first_user_id)
+        std::swap(first_user_id, second_user_id);
+
+    SettingsProfileElements first_user_settings;
+    first_user_settings.emplace_back().parent_profile = first_profile_id;
+    auto first_enabled_settings = access_control.getEnabledSettings(first_user_id, first_user_settings, {}, {});
+
+    SettingsProfileElements second_user_settings;
+    second_user_settings.emplace_back().parent_profile = second_profile_id;
+    auto second_enabled_settings = access_control.getEnabledSettings(second_user_id, second_user_settings, {}, {});
+
+    storage->update(
+        first_profile_id,
+        [](const AccessEntityPtr & entity, const UUID &)
+        {
+            auto updated = std::static_pointer_cast<SettingsProfile>(entity->clone());
+            updated->elements.front().value = Field{UInt64{2}};
+            return updated;
+        });
+    storage->update(
+        second_profile_id,
+        [](const AccessEntityPtr & entity, const UUID &)
+        {
+            auto updated = std::static_pointer_cast<SettingsProfile>(entity->clone());
+            auto & invalid_constraint = updated->elements.emplace_back();
+            invalid_constraint.setting_name = "unknown_setting";
+            invalid_constraint.writability = SettingConstraintWritability::CONST;
+            return updated;
+        });
+    access_control.getChangesNotifier().sendNotifications();
+
+    const auto * first_value = first_enabled_settings->getInfo()->settings.tryGet("max_threads");
+    ASSERT_NE(first_value, nullptr);
+    EXPECT_EQ(*first_value, Field{UInt64{1}});
+
+    const auto * second_value = second_enabled_settings->getInfo()->settings.tryGet("max_block_size");
+    ASSERT_NE(second_value, nullptr);
+    EXPECT_EQ(*second_value, Field{UInt64{10}});
 }
 
 TEST(SettingsProfilesCache, DefaultProfileTracksConfiguredName)

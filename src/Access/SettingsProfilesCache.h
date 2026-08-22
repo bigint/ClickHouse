@@ -38,7 +38,7 @@ private:
     void refreshDefaultProfileID() TSA_REQUIRES(mutex);
     void mergeSettingsAndConstraintsIfNeeded() TSA_REQUIRES(mutex);
     void mergeSettingsAndConstraints() TSA_REQUIRES(mutex);
-    void mergeSettingsAndConstraintsFor(EnabledSettings & enabled) const TSA_REQUIRES(mutex);
+    std::shared_ptr<const SettingsProfilesInfo> calculateSettingsAndConstraintsFor(const EnabledSettings & enabled) const TSA_REQUIRES(mutex);
 
     void substituteProfiles(SettingsProfileElements & elements,
         std::vector<UUID> & profiles,
