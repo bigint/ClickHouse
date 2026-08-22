@@ -396,19 +396,19 @@ TEST(MultipleAccessStorage, FindAllDeduplicatesVisibleEntityIDs)
     EXPECT_EQ(storage.findAll<User>(), std::vector<UUID>{id});
 }
 
-TEST(MultipleAccessStorage, FindAllOmitsNamesShadowedByHigherPriorityStorage)
+TEST(MultipleAccessStorage, FindAllIncludesSameNamesWithDifferentIDs)
 {
     AccessChangesNotifier notifier;
     auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", notifier, true);
     auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", notifier, true);
 
     const auto higher_priority_id = higher_priority_storage->insert(makeUser("same_name"));
-    lower_priority_storage->insert(makeUser("same_name"));
+    const auto lower_priority_id = lower_priority_storage->insert(makeUser("same_name"));
 
     MultipleAccessStorage storage;
     storage.setStorages({higher_priority_storage, lower_priority_storage});
 
-    EXPECT_EQ(storage.findAll<User>(), std::vector<UUID>{higher_priority_id});
+    EXPECT_EQ(storage.findAll<User>(), (std::vector<UUID>{higher_priority_id, lower_priority_id}));
 }
 
 TEST(MultipleAccessStorage, FindSkipsCandidateWhoseIDIsShadowed)

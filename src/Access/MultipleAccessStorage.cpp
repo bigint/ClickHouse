@@ -163,7 +163,6 @@ std::vector<UUID> MultipleAccessStorage::findAllImpl(AccessEntityType type) cons
 {
     std::vector<UUID> all_ids;
     std::unordered_set<UUID> visited_ids;
-    std::unordered_set<String> visited_names;
     auto storages = getStoragesInternal();
     for (const auto & storage : *storages)
     {
@@ -183,8 +182,7 @@ std::vector<UUID> MultipleAccessStorage::findAllImpl(AccessEntityType type) cons
 
                 /// The ID belongs to the first storage which contains it. A same-ID
                 /// candidate from any lower storage is hidden, regardless of its type.
-                if (visible_storage == storage && name_and_type->second == type
-                    && visited_names.emplace(name_and_type->first).second)
+                if (visible_storage == storage && name_and_type->second == type)
                     all_ids.push_back(id);
                 break;
             }
