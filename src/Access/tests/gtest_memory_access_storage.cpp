@@ -65,14 +65,18 @@ TEST(MemoryAccessStorage, ConflictCleanupRemovesOverlappingConflictsOnce)
     std::vector<EntityWithID> entities{
         {UUIDHelpers::generateV4(), makeEntity<User>("first")},
         {shared_id, makeEntity<User>("alpha")},
-        {UUIDHelpers::generateV4(), makeEntity<Role>("alpha")},
         {shared_id, makeEntity<User>("beta")},
-        {UUIDHelpers::generateV4(), makeEntity<User>("beta")},
+        {shared_id, makeEntity<User>("gamma")},
+        {UUIDHelpers::generateV4(), makeEntity<User>("gamma")},
+        {UUIDHelpers::generateV4(), makeEntity<Role>("gamma")},
+        {UUIDHelpers::generateV4(), makeEntity<Role>("duplicate_role")},
+        {UUIDHelpers::generateV4(), makeEntity<Role>("duplicate_role")},
         {UUIDHelpers::generateV4(), makeEntity<User>("last")},
     };
 
-    const std::vector<EntityWithID> expected_entities{entities[0], entities[2], entities[5]};
-    const String expected_warnings = makeConflictWarning(entities[1]) + makeConflictWarning(entities[3]) + makeConflictWarning(entities[4]);
+    const std::vector<EntityWithID> expected_entities{entities[0], entities[5], entities[8]};
+    const String expected_warnings = makeConflictWarning(entities[1]) + makeConflictWarning(entities[2]) + makeConflictWarning(entities[3])
+        + makeConflictWarning(entities[4]) + makeConflictWarning(entities[6]) + makeConflictWarning(entities[7]);
 
     std::ostringstream warnings; // STYLE_CHECK_ALLOW_STD_STRING_STREAM
     auto channel = Poco::AutoPtr<Poco::StreamChannel>(new Poco::StreamChannel(warnings));

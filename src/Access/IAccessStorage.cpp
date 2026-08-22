@@ -799,8 +799,7 @@ UUID IAccessStorage::generateRandomID()
 
 void IAccessStorage::clearConflictsInEntitiesList(std::vector<std::pair<UUID, AccessEntityPtr>> & entities, LoggerPtr log_)
 {
-    std::vector<bool> positions_to_remove(entities.size(), false);
-    bool has_conflicts = false;
+    std::vector<bool> positions_to_remove;
 
     {
         std::unordered_map<UUID, size_t> positions_by_id;
@@ -808,9 +807,10 @@ void IAccessStorage::clearConflictsInEntitiesList(std::vector<std::pair<UUID, Ac
 
         auto mark_conflict = [&](size_t pos, size_t conflicting_pos)
         {
+            if (positions_to_remove.empty())
+                positions_to_remove.resize(entities.size(), false);
             positions_to_remove[pos] = true;
             positions_to_remove[conflicting_pos] = true;
-            has_conflicts = true;
         };
 
         for (size_t pos = 0; pos != entities.size(); ++pos)
@@ -835,21 +835,26 @@ void IAccessStorage::clearConflictsInEntitiesList(std::vector<std::pair<UUID, Ac
         }
     }
 
-    if (!has_conflicts)
+    if (positions_to_remove.empty())
         return;
+
+    for (size_t pos = 0; pos != entities.size(); ++pos)
+    {
+        if (!positions_to_remove[pos])
+            continue;
+
+        LOG_WARNING(
+            log_,
+            "Skipping {} (id={}) due to conflicts with other access entities",
+            entities[pos].second->formatTypeWithName(),
+            toString(entities[pos].first));
+    }
 
     size_t write_pos = 0;
     for (size_t pos = 0; pos != entities.size(); ++pos)
     {
         if (positions_to_remove[pos])
-        {
-            LOG_WARNING(
-                log_,
-                "Skipping {} (id={}) due to conflicts with other access entities",
-                entities[pos].second->formatTypeWithName(),
-                toString(entities[pos].first));
             continue;
-        }
 
         if (write_pos != pos)
             entities[write_pos] = std::move(entities[pos]);
