@@ -91,7 +91,7 @@ void LDAPAccessStorage::setConfiguration(const Poco::Util::AbstractConfiguration
     granted_role_names.clear();
     granted_role_ids.clear();
 
-    role_change_subscription = access_control.subscribeForChanges<Role>(
+    role_change_subscription = access_control.subscribeForAllChanges(
         [this] (const std::vector<AccessChangesNotifier::Change> & changes)
         {
             std::unordered_set<UUID> changed_ids;

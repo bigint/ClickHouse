@@ -45,7 +45,7 @@ void SettingsProfilesCache::ensureAllProfilesRead()
     /// handler, whose unsubscription waits for delivery while that delivery waits here.
     if (!subscription)
     {
-        subscription = access_control.subscribeForChanges<SettingsProfile>(
+        subscription = access_control.subscribeForAllChanges(
             [this](const std::vector<AccessChangesNotifier::Change> & changes)
             {
                 std::lock_guard lock{mutex};

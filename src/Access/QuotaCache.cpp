@@ -345,7 +345,7 @@ void QuotaCache::ensureAllQuotasRead()
     /// handler, whose unsubscription waits for delivery while that delivery waits here.
     if (!subscription)
     {
-        subscription = access_control.subscribeForChanges<Quota>(
+        subscription = access_control.subscribeForAllChanges(
             [this](const std::vector<AccessChangesNotifier::Change> & changes)
             {
                 std::lock_guard lock{mutex};
@@ -402,8 +402,8 @@ void QuotaCache::quotaAddedOrChanged(const UUID & quota_id, const std::shared_pt
 void QuotaCache::quotaRemoved(const UUID & quota_id)
 {
     /// `mutex` is already locked.
-    all_quotas.erase(quota_id);
-    need_choose_quota = true;
+    if (all_quotas.erase(quota_id))
+        need_choose_quota = true;
 }
 
 

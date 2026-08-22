@@ -32,6 +32,11 @@ public:
     /// also delivered before sendNotifications returns (as additional batches).
     using OnChangedHandler = std::function<void(const std::vector<Change> & changes)>;
 
+    /// Subscribes for every entity change. The handler receives the complete mixed-type batch once,
+    /// and is also called with an empty batch so a failed derived-state rebuild can be retried.
+    /// Destroying the returned guard waits for a handler already running on another thread.
+    scope_guard subscribeForAllChanges(const OnChangedHandler & handler);
+
     /// Subscribes for all changes of entities of a given type.
     /// A by-type handler is called on every `sendNotifications`, even when no entity of that type changed
     /// (with an empty `changes`), so a recomputation that threw (and left its work pending) is retried on
@@ -69,6 +74,7 @@ public:
 private:
     struct Handlers
     {
+        std::list<OnChangedHandler> all;
         std::unordered_map<UUID, std::list<OnChangedHandler>> by_id;
         std::list<OnChangedHandler> by_type[static_cast<size_t>(AccessEntityType::MAX)];
         std::mutex mutex;

@@ -4,6 +4,7 @@
 #include <Access/AccessControl.h>
 #include <Access/EnabledRowPolicies.h>
 #include <Access/MemoryAccessStorage.h>
+#include <Access/Role.h>
 #include <Access/RowPolicy.h>
 #include <Core/UUID.h>
 
@@ -102,4 +103,34 @@ TEST(RowPolicyCache, PolicyChangesResolveCompositeOwner)
     filter = enabled_policies->getFilter("database", "table", RowPolicyFilterType::SELECT_FILTER);
     ASSERT_TRUE(filter);
     EXPECT_TRUE(filter->isAlwaysTrue());
+}
+
+TEST(RowPolicyCache, DifferentTypeRemovalExposesPolicyWithSameID)
+{
+    AccessControl access_control;
+    auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", access_control.getChangesNotifier(), true);
+    auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", access_control.getChangesNotifier(), true);
+    const auto shared_id = UUIDHelpers::generateV4();
+
+    auto role = std::make_shared<Role>();
+    role->setName("higher_priority_role");
+    higher_priority_storage->insert(shared_id, role, false, true);
+
+    auto policy = std::make_shared<RowPolicy>();
+    policy->setFullName("lower_priority_policy", "database", "table");
+    policy->to_roles = RolesOrUsersSet::AllTag{};
+    policy->filters[static_cast<size_t>(RowPolicyFilterType::SELECT_FILTER)] = "0";
+    lower_priority_storage->insert(shared_id, policy, false, true);
+
+    access_control.setStorages({higher_priority_storage, lower_priority_storage});
+    access_control.getChangesNotifier().sendNotifications();
+    auto enabled_policies = access_control.getEnabledRowPolicies(UUIDHelpers::generateV4(), {});
+    EXPECT_FALSE(enabled_policies->getFilter("database", "table", RowPolicyFilterType::SELECT_FILTER));
+
+    higher_priority_storage->remove(shared_id);
+    access_control.getChangesNotifier().sendNotifications();
+
+    auto filter = enabled_policies->getFilter("database", "table", RowPolicyFilterType::SELECT_FILTER);
+    ASSERT_TRUE(filter);
+    EXPECT_TRUE(filter->isAlwaysFalse());
 }

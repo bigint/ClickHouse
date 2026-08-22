@@ -120,6 +120,9 @@ public:
 
     using OnChangedHandler = AccessChangesNotifier::OnChangedHandler;
 
+    /// Subscribes for every access entity change in a complete mixed-type batch.
+    scope_guard subscribeForAllChanges(const OnChangedHandler & handler) const;
+
     /// Subscribes for all changes of entities of a given type (see AccessChangesNotifier::subscribeForChanges).
     scope_guard subscribeForChanges(AccessEntityType type, const OnChangedHandler & handler) const;
 

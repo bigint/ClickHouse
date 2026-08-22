@@ -19,6 +19,20 @@ AccessChangesNotifier::~AccessChangesNotifier()
     handlers->notifier = nullptr;
 }
 
+scope_guard AccessChangesNotifier::subscribeForAllChanges(const OnChangedHandler & handler)
+{
+    std::lock_guard lock{handlers->mutex};
+    handlers->all.push_back(handler);
+    auto handler_it = std::prev(handlers->all.end());
+
+    return [my_handlers = handlers, handler_it]
+    {
+        std::lock_guard delivery_lock{my_handlers->delivery_mutex};
+        std::lock_guard lock2{my_handlers->mutex};
+        my_handlers->all.erase(handler_it);
+    };
+}
+
 void AccessChangesNotifier::onEntityAdded(const UUID & id, const AccessEntityPtr & new_entity)
 {
     std::lock_guard lock{queue_mutex};
@@ -156,6 +170,9 @@ void AccessChangesNotifier::sendNotifications()
         std::vector<std::pair<OnChangedHandler, const std::vector<Change> *>> calls;
         {
             std::lock_guard handlers_lock{handlers->mutex};
+
+            for (const auto & handler : handlers->all)
+                calls.emplace_back(handler, batch.empty() ? &no_changes : &batch);
 
             /// Every by-type handler is called even when nothing of its type changed (with an empty batch)
             /// so a recomputation that threw is retried on the next call.

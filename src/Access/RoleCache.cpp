@@ -124,7 +124,7 @@ void RoleCache::ensureSubscribed()
 
     /// A single subscription for all roles: each batch updates the cached roles and runs one coalesced
     /// recalculation, instead of one subscription (and one recalculation) per role.
-    subscription = access_control.subscribeForChanges<Role>(
+    subscription = access_control.subscribeForAllChanges(
         [this](const std::vector<AccessChangesNotifier::Change> & changes)
         {
             /// Declared before `lock` to send notifications after the mutex will be unlocked.

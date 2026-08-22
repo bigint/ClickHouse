@@ -528,6 +528,11 @@ void AccessControl::moveAccessEntities(
     changes_notifier->sendNotifications();
 }
 
+scope_guard AccessControl::subscribeForAllChanges(const OnChangedHandler & handler) const
+{
+    return changes_notifier->subscribeForAllChanges(handler);
+}
+
 scope_guard AccessControl::subscribeForChanges(AccessEntityType type, const OnChangedHandler & handler) const
 {
     return changes_notifier->subscribeForChanges(type, handler);

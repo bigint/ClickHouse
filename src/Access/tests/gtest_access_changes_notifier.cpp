@@ -16,7 +16,7 @@ namespace DB::ErrorCodes
 }
 
 /// The per-entity caches (RowPolicyCache, RoleCache, SettingsProfilesCache, QuotaCache) rely on a whole
-/// notification batch being delivered to a by-type handler in a single call, so that they patch their
+/// notification batch being delivered to a handler in a single call, so that they patch their
 /// per-entity maps for each change and run the expensive O(enabled sets * entities) rebuild only once per
 /// batch (a full refresh delivers one notification per entity, but needs a single rebuild).
 TEST(AccessChangesNotifier, BatchedChangesDeliveredOncePerBatch)
@@ -58,6 +58,33 @@ TEST(AccessChangesNotifier, BatchedChangesDeliveredOncePerBatch)
     notifier.sendNotifications();
     EXPECT_EQ(handler_calls, 3u);
     EXPECT_EQ(total_changes, num_entities + 1); /// unchanged - the batch was empty
+}
+
+TEST(AccessChangesNotifier, AllChangesHandlerReceivesMixedBatchOnce)
+{
+    AccessChangesNotifier notifier;
+    size_t handler_calls = 0;
+    std::vector<AccessChangesNotifier::Change> delivered;
+
+    auto subscription = notifier.subscribeForAllChanges(
+        [&](const std::vector<AccessChangesNotifier::Change> & changes)
+        {
+            ++handler_calls;
+            delivered.insert(delivered.end(), changes.begin(), changes.end());
+        });
+
+    notifier.onEntityRemoved(UUIDHelpers::generateV4(), AccessEntityType::ROLE);
+    notifier.onEntityRemoved(UUIDHelpers::generateV4(), AccessEntityType::ROW_POLICY);
+    notifier.sendNotifications();
+
+    EXPECT_EQ(handler_calls, 1u);
+    ASSERT_EQ(delivered.size(), 2u);
+    EXPECT_EQ(delivered[0].type, AccessEntityType::ROLE);
+    EXPECT_EQ(delivered[1].type, AccessEntityType::ROW_POLICY);
+
+    notifier.sendNotifications();
+    EXPECT_EQ(handler_calls, 2u);
+    EXPECT_EQ(delivered.size(), 2u);
 }
 
 /// A batch handler that throws must not lose the pending work: the caches clear their "needs rebuild" flag

@@ -160,7 +160,7 @@ void RowPolicyCache::ensureAllRowPoliciesRead()
     /// handler, whose unsubscription waits for delivery while that delivery waits here.
     if (!subscription)
     {
-        subscription = access_control.subscribeForChanges<RowPolicy>(
+        subscription = access_control.subscribeForAllChanges(
             [this](const std::vector<AccessChangesNotifier::Change> & changes)
             {
                 {
@@ -222,8 +222,8 @@ void RowPolicyCache::rowPolicyAddedOrChanged(const UUID & policy_id, const RowPo
 void RowPolicyCache::rowPolicyRemoved(const UUID & policy_id)
 {
     /// `mutex` is already locked.
-    all_policies.erase(policy_id);
-    need_mix_filters = true;
+    if (all_policies.erase(policy_id))
+        need_mix_filters = true;
 }
 
 
