@@ -79,6 +79,30 @@ TEST(AccessEntityIO, MaskingPolicyCloneOwnsExpressionTrees)
     EXPECT_EQ(original.where_condition->as<const ASTLiteral &>().value, Field{UInt64{2}});
 }
 
+#if USE_SSL
+TEST(AccessEntityIO, MixedCertificateSubjectsRoundTrip)
+{
+    User original;
+    original.setName("certificate_user");
+    AuthenticationData authentication_data(AuthenticationType::SSL_CERTIFICATE);
+    authentication_data.addSSLCertificateSubject(X509Certificate::Subjects::Type::CN, "client.example.com");
+    authentication_data.addSSLCertificateSubject(X509Certificate::Subjects::Type::SAN, "DNS:client.example.com");
+    authentication_data.setValidUntil(1'800'000'000);
+    original.authentication_methods.push_back(std::move(authentication_data));
+
+    const auto restored = std::dynamic_pointer_cast<const User>(deserializeAccessEntity(serializeAccessEntity(original)));
+    ASSERT_TRUE(restored);
+    ASSERT_EQ(restored->authentication_methods.size(), 2u);
+
+    const auto & cn_method = restored->authentication_methods[0];
+    const auto & san_method = restored->authentication_methods[1];
+    EXPECT_TRUE(cn_method.getSSLCertificateSubjects().at(X509Certificate::Subjects::Type::CN).contains("client.example.com"));
+    EXPECT_TRUE(san_method.getSSLCertificateSubjects().at(X509Certificate::Subjects::Type::SAN).contains("DNS:client.example.com"));
+    EXPECT_EQ(cn_method.getValidUntil(), 1'800'000'000);
+    EXPECT_EQ(san_method.getValidUntil(), 1'800'000'000);
+}
+#endif
+
 TEST(DiskAccessStorageRecovery, RebuildRemovesTempFiles)
 {
     Poco::TemporaryFile temp_dir;

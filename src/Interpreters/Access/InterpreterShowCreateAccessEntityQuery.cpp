@@ -45,6 +45,35 @@ namespace ErrorCodes
 
 namespace
 {
+    void appendAuthenticationMethodASTs(
+        std::vector<boost::intrusive_ptr<ASTAuthenticationData>> & asts,
+        const AuthenticationData & authentication_method)
+    {
+#if USE_SSL
+        if (authentication_method.getType() == AuthenticationType::SSL_CERTIFICATE)
+        {
+            using X509Certificate::Subjects::Type::CN;
+            using X509Certificate::Subjects::Type::SAN;
+
+            const auto & subjects = authentication_method.getSSLCertificateSubjects();
+            if (!subjects.at(CN).empty() && !subjects.at(SAN).empty())
+            {
+                for (const auto type : {CN, SAN})
+                {
+                    AuthenticationData split_method(AuthenticationType::SSL_CERTIFICATE);
+                    for (const auto & subject : subjects.at(type))
+                        split_method.addSSLCertificateSubject(type, String{subject});
+                    split_method.setValidUntil(authentication_method.getValidUntil());
+                    asts.push_back(split_method.toAST());
+                }
+                return;
+            }
+        }
+#endif
+
+        asts.push_back(authentication_method.toAST());
+    }
+
     ASTPtr getCreateQueryImpl(
         const User & user,
         const AccessControl * access_control /* not used if attach_mode == true */,
@@ -66,9 +95,7 @@ namespace
         }
 
         for (const auto & authentication_method : user.authentication_methods)
-        {
-            query->authentication_methods.push_back(authentication_method.toAST());
-        }
+            appendAuthenticationMethodASTs(query->authentication_methods, authentication_method);
 
         if (!user.settings.empty())
         {

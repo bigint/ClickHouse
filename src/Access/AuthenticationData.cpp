@@ -491,6 +491,12 @@ boost::intrusive_ptr<ASTAuthenticationData> AuthenticationData::toAST() const
             using X509Certificate::Subjects::Type::SAN;
 
             const auto &subjects = getSSLCertificateSubjects();
+            if (!subjects.at(CN).empty() && !subjects.at(SAN).empty())
+            {
+                throw Exception(
+                    ErrorCodes::LOGICAL_ERROR,
+                    "Cannot represent both CN and SAN subjects in one ASTAuthenticationData");
+            }
             X509Certificate::Subjects::Type cert_subject_type = !subjects.at(SAN).empty() ? SAN : CN;
 
             node->ssl_cert_subject_type = toString(cert_subject_type);
