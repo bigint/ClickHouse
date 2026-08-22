@@ -157,6 +157,19 @@ TEST(AuthenticationData, InvalidHashDoesNotChangeSecondFactor)
     EXPECT_EQ(authentication_data, original);
 }
 
+#if USE_BCRYPT
+TEST(AuthenticationData, BcryptRejectsEmbeddedNullBytes)
+{
+    const String password = "prefix";
+    const String password_with_null{"prefix\0suffix", 13};
+    const auto hash = AuthenticationData::Util::encodeBcrypt(password, 4);
+
+    EXPECT_THROW(AuthenticationData::Util::encodeBcrypt(password_with_null, 4), Exception);
+    EXPECT_FALSE(AuthenticationData::Util::checkPasswordBcrypt(password_with_null, hash));
+    EXPECT_TRUE(AuthenticationData::Util::checkPasswordBcrypt(password, hash));
+}
+#endif
+
 TEST(Authentication, OneTimePasswordRejectsNonASCIIBytes)
 {
     const OneTimePasswordSecret secret{"JBSWY3DPEHPK3PXP"};

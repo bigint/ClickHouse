@@ -91,6 +91,8 @@ AuthenticationData::Digest AuthenticationData::Util::encodeBcrypt(std::string_vi
         throw Exception(
             ErrorCodes::BAD_ARGUMENTS,
             "bcrypt does not support passwords with a length of more than 72 bytes");
+    if (text.contains('\0'))
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "bcrypt passwords cannot contain a null byte");
 
     char salt[BCRYPT_HASHSIZE];
     Digest hash;
@@ -100,7 +102,8 @@ AuthenticationData::Digest AuthenticationData::Util::encodeBcrypt(std::string_vi
     if (ret != 0)
         throw Exception(ErrorCodes::LOGICAL_ERROR, "BCrypt library failed: bcrypt_gensalt returned {}", ret);
 
-    ret = bcrypt_hashpw(text.data(), salt, reinterpret_cast<char *>(hash.data())); /// NOLINT(bugprone-suspicious-stringview-data-usage)
+    const String null_terminated_text{text};
+    ret = bcrypt_hashpw(null_terminated_text.c_str(), salt, reinterpret_cast<char *>(hash.data()));
     if (ret != 0)
         throw Exception(ErrorCodes::LOGICAL_ERROR, "BCrypt library failed: bcrypt_hashpw returned {}", ret);
 
@@ -115,6 +118,11 @@ AuthenticationData::Digest AuthenticationData::Util::encodeBcrypt(std::string_vi
 bool AuthenticationData::Util::checkPasswordBcrypt(std::string_view password [[maybe_unused]], const Digest & password_bcrypt [[maybe_unused]])
 {
 #if USE_BCRYPT
+    if (password.contains('\0'))
+        return false;
+    if (password_bcrypt.empty())
+        throw Exception(ErrorCodes::AUTHENTICATION_FAILED, "Internal failure decoding Bcrypt hash");
+
     /// Bcrypt takes a long time to compute, so we cache the results.
     /// To avoid storing plaintext passwords in memory we only store SHA256 of the password from the user.
     /// We store a mapping of the pair of SHA256 of the password and bcrypt hash to the result of the comparison.
@@ -130,7 +138,10 @@ bool AuthenticationData::Util::checkPasswordBcrypt(std::string_view password [[m
 
     auto [result, _] = bcrypt_cache.getOrSet(cache_key, [&] -> std::shared_ptr<bool>
         {
-            int ret = bcrypt_checkpw(password.data(), reinterpret_cast<const char *>(password_bcrypt.data()));  /// NOLINT(bugprone-suspicious-stringview-data-usage)
+            const String null_terminated_password{password};
+            const String null_terminated_hash{
+                reinterpret_cast<const char *>(password_bcrypt.data()), password_bcrypt.size()};
+            int ret = bcrypt_checkpw(null_terminated_password.c_str(), null_terminated_hash.c_str());
             /// Before 24.6 we didn't validate hashes on creation, so it could be that the stored hash is invalid
             /// and it could not be decoded by the library
             if (ret == -1)
@@ -319,7 +330,9 @@ void AuthenticationData::setPasswordHashBinary(const Digest & hash, std::optiona
             if (validate)
             {
                 /// Verify that it is a valid hash
-                int ret = bcrypt_checkpw("", reinterpret_cast<const char *>(resized.data()));
+                const String null_terminated_hash{
+                    reinterpret_cast<const char *>(resized.data()), resized.size()};
+                int ret = bcrypt_checkpw("", null_terminated_hash.c_str());
                 if (ret == -1)
                     throw Exception(ErrorCodes::BAD_ARGUMENTS, "Could not decode the provided hash with 'bcrypt_hash'");
             }
