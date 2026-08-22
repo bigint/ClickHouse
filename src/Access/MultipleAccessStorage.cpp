@@ -327,13 +327,28 @@ void MultipleAccessStorage::moveAccessEntities(const std::vector<UUID> & ids, co
         }
 
         e.addMessage("while moving {} from {} to {}", message, source_storage_name, destination_storage_name);
-        rollback();
+        try
+        {
+            rollback();
+        }
+        catch (...)
+        {
+            e.addMessage("Rollback also failed: {}", getCurrentExceptionMessage(/* with_stacktrace= */ false));
+        }
         throw;
     }
     catch (...)
     {
-        rollback();
-        throw;
+        auto original_exception = std::current_exception();
+        try
+        {
+            rollback();
+        }
+        catch (...)
+        {
+            tryLogCurrentException(getLogger(), "while rolling back a failed access entity move");
+        }
+        std::rethrow_exception(original_exception);
     }
 }
 

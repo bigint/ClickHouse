@@ -324,8 +324,10 @@ TEST(MultipleAccessStorage, MoveRestoresSourceAfterDestinationRollbackFailure)
     MultipleAccessStorage storage;
     storage.setStorages({source_storage, destination_storage});
 
-    EXPECT_ANY_THROW(storage.moveAccessEntities(
-        {first_role_id, conflicting_role_id}, source_storage->getStorageName(), destination_storage->getStorageName()));
+    EXPECT_THROW(
+        storage.moveAccessEntities(
+            {first_role_id, conflicting_role_id}, source_storage->getStorageName(), destination_storage->getStorageName()),
+        Exception);
 
     EXPECT_TRUE(source_storage->exists(first_role_id));
     EXPECT_TRUE(source_storage->exists(conflicting_role_id));
