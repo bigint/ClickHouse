@@ -35,6 +35,7 @@ namespace DB
 namespace ErrorCodes
 {
     extern const int BAD_ARGUMENTS;
+    extern const int CORRUPTED_DATA;
     extern const int NO_ZOOKEEPER;
     extern const int LOGICAL_ERROR;
 }
@@ -44,7 +45,24 @@ static UUID parseUUID(const String & text)
     UUID uuid = UUIDHelpers::Nil;
     auto buffer = ReadBufferFromMemory(text.data(), text.length());
     readUUIDText(uuid, buffer);
+    assertEOF(buffer);
     return uuid;
+}
+
+static Coordination::Stat getNameMappingStat(const zkutil::ZooKeeperPtr & zookeeper, const String & name_path, const UUID & expected_id)
+{
+    String mapped_id_text;
+    Coordination::Stat stat;
+    if (!zookeeper->tryGet(name_path, mapped_id_text, &stat))
+        throw Exception(ErrorCodes::CORRUPTED_DATA, "Missing access entity name mapping {} for UUID {}", name_path, expected_id);
+
+    const UUID mapped_id = parseUUID(mapped_id_text);
+    if (mapped_id != expected_id)
+    {
+        throw Exception(
+            ErrorCodes::CORRUPTED_DATA, "Access entity name mapping {} points to UUID {} instead of {}", name_path, mapped_id, expected_id);
+    }
+    return stat;
 }
 
 static String formatEntityNameWithType(AccessEntityType type, const String & name)
@@ -273,7 +291,10 @@ bool ZooKeeperReplicator::insertZooKeeper(
 
             LOG_DEBUG(&Poco::Logger::get(storage_name), "Removing existing entity with name {} and path {}", existing_entity_name, existing_name_path);
             if (existing_name_path != name_path)
-                replace_ops.emplace_back(zkutil::makeRemoveRequest(existing_name_path, -1));
+            {
+                const auto existing_name_stat = getNameMappingStat(zookeeper, existing_name_path, id);
+                replace_ops.emplace_back(zkutil::makeRemoveRequest(existing_name_path, existing_name_stat.version));
+            }
 
             replace_ops.emplace_back(zkutil::makeSetRequest(entity_path, new_entity_definition, stat.version));
         }
@@ -289,11 +310,35 @@ bool ZooKeeperReplicator::insertZooKeeper(
             /// If that happens, then we'll just retry from the start.
             Coordination::Stat stat;
             String existing_entity_uuid = zookeeper->get(name_path, &stat);
-            const String existing_entity_path = zookeeper_path + "/uuid/" + existing_entity_uuid;
+            const UUID existing_entity_id = parseUUID(existing_entity_uuid);
+            const String existing_entity_path = zookeeper_path + "/uuid/" + toString(existing_entity_id);
 
             LOG_DEBUG(&Poco::Logger::get(storage_name), "Removing existing entity with uuid {} and path {}", existing_entity_uuid, existing_entity_path);
             if (existing_entity_path != entity_path)
-                replace_ops.emplace_back(zkutil::makeRemoveRequest(existing_entity_path, -1));
+            {
+                String conflicting_entity_definition;
+                Coordination::Stat conflicting_entity_stat;
+                if (!zookeeper->tryGet(existing_entity_path, conflicting_entity_definition, &conflicting_entity_stat))
+                {
+                    throw Exception(
+                        ErrorCodes::CORRUPTED_DATA,
+                        "Access entity name mapping {} points to missing UUID {}",
+                        name_path,
+                        existing_entity_id);
+                }
+
+                const auto conflicting_entity = deserializeAccessEntity(conflicting_entity_definition, existing_entity_path);
+                if ((conflicting_entity->getType() != type) || (conflicting_entity->getName() != name))
+                {
+                    throw Exception(
+                        ErrorCodes::CORRUPTED_DATA,
+                        "Access entity name mapping {} points to {}, expected {}",
+                        name_path,
+                        conflicting_entity->formatTypeWithName(),
+                        new_entity->formatTypeWithName());
+                }
+                replace_ops.emplace_back(zkutil::makeRemoveRequest(existing_entity_path, conflicting_entity_stat.version));
+            }
 
             replace_ops.emplace_back(zkutil::makeSetRequest(name_path, entity_uuid, stat.version));
         }
@@ -356,10 +401,11 @@ bool ZooKeeperReplicator::removeZooKeeper(const zkutil::ZooKeeperPtr & zookeeper
     const String & name = entity->getName();
 
     const String entity_name_path = zookeeper_path + "/" + type_info.unique_char + "/" + escapeForFileName(name);
+    const auto entity_name_stat = getNameMappingStat(zookeeper, entity_name_path, id);
 
     Coordination::Requests ops;
     ops.emplace_back(zkutil::makeRemoveRequest(entity_path, entity_stat.version));
-    ops.emplace_back(zkutil::makeRemoveRequest(entity_name_path, -1));
+    ops.emplace_back(zkutil::makeRemoveRequest(entity_name_path, entity_name_stat.version));
 
     /// If this fails, then we'll just retry from the start.
     zookeeper->multi(ops);
@@ -419,7 +465,8 @@ bool ZooKeeperReplicator::updateZooKeeper(const zkutil::ZooKeeperPtr & zookeeper
     {
         auto old_name_path = zookeeper_path + "/" + type_info.unique_char + "/" + escapeForFileName(old_name);
         auto new_name_path = zookeeper_path + "/" + type_info.unique_char + "/" + escapeForFileName(new_name);
-        ops.emplace_back(zkutil::makeRemoveRequest(old_name_path, -1));
+        const auto old_name_stat = getNameMappingStat(zookeeper, old_name_path, id);
+        ops.emplace_back(zkutil::makeRemoveRequest(old_name_path, old_name_stat.version));
         ops.emplace_back(zkutil::makeCreateRequest(new_name_path, entity_uuid, zkutil::CreateMode::Persistent));
     }
 
