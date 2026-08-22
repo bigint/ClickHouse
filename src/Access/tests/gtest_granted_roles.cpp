@@ -22,4 +22,9 @@ TEST(GrantedRoles, CopyDependenciesReplacesAdminOption)
     destination = without_admin_option;
     destination.copyDependenciesFrom(with_admin_option, {role_id});
     EXPECT_TRUE(destination.isGrantedWithAdminOption(role_id));
+
+    GrantedRoles absent;
+    destination.copyDependenciesFrom(absent, {role_id});
+    EXPECT_FALSE(destination.isGranted(role_id));
+    EXPECT_FALSE(destination.isGrantedWithAdminOption(role_id));
 }

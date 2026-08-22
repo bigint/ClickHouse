@@ -236,7 +236,11 @@ void GrantedRoles::copyDependenciesFrom(const GrantedRoles & src, const std::uno
     for (const auto & role_id : ids)
     {
         if (!src.roles.contains(role_id))
+        {
+            roles.erase(role_id);
+            roles_with_admin_option.erase(role_id);
             continue;
+        }
 
         roles.emplace(role_id);
         if (src.roles_with_admin_option.contains(role_id))
