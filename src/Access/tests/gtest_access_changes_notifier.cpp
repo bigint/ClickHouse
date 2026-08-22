@@ -168,3 +168,28 @@ TEST(AccessChangesNotifier, HandlerEnqueuedChangesDeliveredInSameCall)
     EXPECT_TRUE(user_change_injected);
     EXPECT_EQ(user_changes_delivered, 1u);
 }
+
+TEST(AccessChangesNotifier, ReentrantSendIsDrainedByOuterCall)
+{
+    AccessChangesNotifier notifier;
+    const auto role_id = UUIDHelpers::generateV4();
+    const auto user_id = UUIDHelpers::generateV4();
+    size_t user_changes = 0;
+
+    auto role_subscription = notifier.subscribeForChanges(
+        AccessEntityType::ROLE,
+        [&](const std::vector<AccessChangesNotifier::Change> & changes)
+        {
+            if (changes.empty())
+                return;
+            notifier.onEntityRemoved(user_id, AccessEntityType::USER);
+            notifier.sendNotifications();
+        });
+    auto user_subscription = notifier.subscribeForChanges(
+        AccessEntityType::USER, [&](const std::vector<AccessChangesNotifier::Change> & changes) { user_changes += changes.size(); });
+
+    notifier.onEntityRemoved(role_id, AccessEntityType::ROLE);
+    notifier.sendNotifications();
+
+    EXPECT_EQ(user_changes, 1u);
+}

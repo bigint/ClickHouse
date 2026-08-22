@@ -75,7 +75,8 @@ private:
 
     std::vector<Change> queue;
     std::mutex queue_mutex;
-    std::mutex sending_notifications;
+    std::recursive_mutex sending_notifications;
+    bool sending_notifications_in_progress = false; /// guarded by `sending_notifications`
 };
 
 }

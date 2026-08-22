@@ -1,4 +1,5 @@
 #include <Access/AccessChangesNotifier.h>
+#include <base/scope_guard.h>
 #include <Common/Exception.h>
 
 #include <utility>
@@ -92,6 +93,10 @@ void AccessChangesNotifier::sendNotifications()
 {
     /// Only one thread can send notifications at any time.
     std::lock_guard sending_notifications_lock{sending_notifications};
+    if (sending_notifications_in_progress)
+        return;
+    sending_notifications_in_progress = true;
+    SCOPE_EXIT({ sending_notifications_in_progress = false; });
 
     /// Deliver in batches until the queue is empty.
     ///
