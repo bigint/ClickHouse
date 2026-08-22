@@ -4,6 +4,7 @@
 #include <Access/AccessControl.h>
 #include <Access/AccessEntityIO.h>
 #include <Access/DiskAccessStorage.h>
+#include <Access/Role.h>
 #include <Access/User.h>
 #include <Core/UUID.h>
 #include <IO/WriteHelpers.h>
@@ -113,6 +114,36 @@ TEST(DiskAccessStorage, LazyMaterializationDoesNotNotify)
     notifier.sendNotifications();
 
     EXPECT_EQ(delivered_changes, 0u);
+}
+
+TEST(DiskAccessStorage, ReplacingEntityTypeRewritesBothLists)
+{
+    Poco::TemporaryFile temp_dir;
+    temp_dir.createDirectories();
+    String dir = temp_dir.path() + "/";
+
+    const auto id = UUIDHelpers::generateV4();
+    {
+        AccessChangesNotifier notifier;
+        DiskAccessStorage storage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false);
+        auto user = std::make_shared<User>();
+        user->setName("entity");
+        storage.insert(id, user, false, true);
+    }
+
+    {
+        AccessChangesNotifier notifier;
+        DiskAccessStorage storage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false);
+        auto role = std::make_shared<Role>();
+        role->setName("entity");
+        storage.insert(id, role, true, false);
+    }
+
+    AccessChangesNotifier notifier;
+    DiskAccessStorage storage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false);
+    EXPECT_TRUE(storage.exists(id));
+    EXPECT_TRUE(storage.find<Role>("entity").has_value());
+    EXPECT_FALSE(storage.find<User>("entity").has_value());
 }
 
 TEST(AccessControl, DiskStorageInitialNotificationsAreDeliveredAfterAttachment)

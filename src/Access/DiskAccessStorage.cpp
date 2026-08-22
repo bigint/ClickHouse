@@ -587,6 +587,9 @@ bool DiskAccessStorage::insertNoLock(const UUID & id, const AccessEntityPtr & ne
     }
 
     bool id_collision = memory_storage.exists(id);
+    std::optional<AccessEntityType> old_type_by_id;
+    if (id_collision)
+        old_type_by_id = memory_storage.readNameWithType(id).second;
     if (id_collision && !replace_if_exists)
     {
         if (throw_if_exists)
@@ -608,6 +611,8 @@ bool DiskAccessStorage::insertNoLock(const UUID & id, const AccessEntityPtr & ne
     if (write_on_disk)
     {
         scheduleWriteLists(type);
+        if (old_type_by_id && (*old_type_by_id != type))
+            scheduleWriteLists(*old_type_by_id);
 
         /// Write <id>.tmp and atomically rename it to <id>.sql
         writeAccessEntityToDisk(id, *new_entity);
