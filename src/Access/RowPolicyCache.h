@@ -24,6 +24,8 @@ public:
     std::shared_ptr<const EnabledRowPolicies> getEnabledRowPolicies(const UUID & user_id, const boost::container::flat_set<UUID> & enabled_roles);
 
 private:
+    friend class AccessControl;
+
     struct PolicyInfo
     {
         explicit PolicyInfo(const RowPolicyPtr & policy_) { setPolicy(policy_); }
@@ -40,6 +42,7 @@ private:
     void rowPolicyAddedOrChanged(const UUID & policy_id, const RowPolicyPtr & new_policy) TSA_REQUIRES(mutex);
     void rowPolicyRemoved(const UUID & policy_id) TSA_REQUIRES(mutex);
     void mixFiltersIfNeeded();
+    void usersWithoutRowPoliciesCanReadRowsChanged();
     /// Takes no lock and reads only `policies` (not `all_policies`), so it can rebuild on a snapshot
     /// off the `mutex`. `const` to keep it from mutating cache state off-lock.
     void mixFiltersFor(EnabledRowPolicies & enabled, const std::unordered_map<UUID, PolicyInfo> & policies, bool users_without_row_policies_can_read_rows) const;
@@ -52,6 +55,7 @@ private:
     scope_guard subscription;
     std::map<EnabledRowPolicies::Params, std::weak_ptr<EnabledRowPolicies>> enabled_row_policies TSA_GUARDED_BY(mutex);
     std::mutex mutex;
+    std::mutex mix_filters_mutex;
 };
 
 }

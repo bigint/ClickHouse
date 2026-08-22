@@ -216,9 +216,11 @@ void RowPolicyCache::rowPolicyRemoved(const UUID & policy_id)
 
 void RowPolicyCache::mixFiltersIfNeeded()
 {
+    std::lock_guard mix_lock{mix_filters_mutex};
+
     /// Rebuilding is O(enabled sets * policies) and slow with lots of policies, so do it off `mutex`
-    /// to not block getEnabledRowPolicies (i.e. logins). Safe because it always runs single-threaded
-    /// from AccessChangesNotifier::sendNotifications, on an immutable snapshot, publishing via atomic store.
+    /// to not block `getEnabledRowPolicies` (i.e. logins). `mix_filters_mutex` serializes notification
+    /// and configuration-triggered rebuilds; each uses an immutable snapshot and publishes via atomic store.
     std::unordered_map<UUID, PolicyInfo> policies_snapshot;
     std::vector<std::shared_ptr<EnabledRowPolicies>> targets;
     bool users_without_row_policies_can_read_rows = false;
@@ -265,6 +267,18 @@ void RowPolicyCache::mixFiltersIfNeeded()
         LOG_DEBUG(getLogger("RowPolicyCache"), "Re-mixed row policy filters for {} enabled set(s) over {} policies in {} ms (off-lock)", targets.size(), policies_snapshot.size(), elapsed_ms);
     else
         LOG_TRACE(getLogger("RowPolicyCache"), "Re-mixed row policy filters for {} enabled set(s) over {} policies in {} ms (off-lock)", targets.size(), policies_snapshot.size(), elapsed_ms);
+}
+
+
+void RowPolicyCache::usersWithoutRowPoliciesCanReadRowsChanged()
+{
+    {
+        std::lock_guard lock{mutex};
+        if (!all_policies_read)
+            return;
+        need_mix_filters = true;
+    }
+    mixFiltersIfNeeded();
 }
 
 

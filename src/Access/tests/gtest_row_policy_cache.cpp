@@ -36,3 +36,31 @@ TEST(RowPolicyCache, InvalidRestrictiveFilterFailsClosed)
     ASSERT_TRUE(filter);
     EXPECT_TRUE(filter->isAlwaysFalse());
 }
+
+TEST(RowPolicyCache, UsersWithoutPoliciesSettingRefreshesExistingEnabledPolicies)
+{
+    AccessControl access_control;
+    auto storage = std::make_shared<MemoryAccessStorage>("memory", access_control.getChangesNotifier(), true);
+    access_control.setStorages({storage});
+
+    auto policy = std::make_shared<RowPolicy>();
+    policy->setFullName("policy", "database", "table");
+    policy->to_roles = RolesOrUsersSet(UUIDHelpers::generateV4());
+    policy->filters[static_cast<size_t>(RowPolicyFilterType::SELECT_FILTER)] = "1";
+    access_control.insert(policy);
+
+    auto enabled_policies = access_control.getEnabledRowPolicies(UUIDHelpers::generateV4(), {});
+    auto filter = enabled_policies->getFilter("database", "table", RowPolicyFilterType::SELECT_FILTER);
+    ASSERT_TRUE(filter);
+    EXPECT_TRUE(filter->isAlwaysFalse());
+
+    access_control.setEnabledUsersWithoutRowPoliciesCanReadRows(true);
+    filter = enabled_policies->getFilter("database", "table", RowPolicyFilterType::SELECT_FILTER);
+    ASSERT_TRUE(filter);
+    EXPECT_TRUE(filter->isAlwaysTrue());
+
+    access_control.setEnabledUsersWithoutRowPoliciesCanReadRows(false);
+    filter = enabled_policies->getFilter("database", "table", RowPolicyFilterType::SELECT_FILTER);
+    ASSERT_TRUE(filter);
+    EXPECT_TRUE(filter->isAlwaysFalse());
+}

@@ -844,6 +844,13 @@ bool AccessControl::isEnabledReadWriteGrants() const
     return enable_read_write_grants;
 }
 
+void AccessControl::setEnabledUsersWithoutRowPoliciesCanReadRows(bool enable)
+{
+    if (users_without_row_policies_can_read_rows.exchange(enable) == enable)
+        return;
+    row_policy_cache->usersWithoutRowPoliciesCanReadRowsChanged();
+}
+
 std::shared_ptr<const ContextAccess> AccessControl::getContextAccess(const ContextAccessParams & params) const
 {
     return context_access_cache->getContextAccess(params);
