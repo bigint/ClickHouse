@@ -197,6 +197,33 @@ TEST(AccessChangesNotifier, ReentrantSendIsDrainedByOuterCall)
     EXPECT_EQ(user_changes, 1u);
 }
 
+TEST(AccessChangesNotifier, HandlerDeferralStopsOuterDrain)
+{
+    AccessChangesNotifier notifier;
+    const auto user_id = UUIDHelpers::generateV4();
+    scope_guard deferral;
+    size_t user_changes = 0;
+
+    auto role_subscription = notifier.subscribeForChanges(
+        AccessEntityType::ROLE,
+        [&](const std::vector<AccessChangesNotifier::Change> & changes)
+        {
+            if (changes.empty())
+                return;
+            deferral = notifier.deferNotifications();
+            notifier.onEntityRemoved(user_id, AccessEntityType::USER);
+        });
+    auto user_subscription = notifier.subscribeForChanges(
+        AccessEntityType::USER, [&](const std::vector<AccessChangesNotifier::Change> & changes) { user_changes += changes.size(); });
+
+    notifier.onEntityRemoved(UUIDHelpers::generateV4(), AccessEntityType::ROLE);
+    notifier.sendNotifications();
+    EXPECT_EQ(user_changes, 0u);
+
+    deferral.reset();
+    EXPECT_EQ(user_changes, 1u);
+}
+
 TEST(AccessChangesNotifier, DeferralDelaysConcurrentSend)
 {
     AccessChangesNotifier notifier;

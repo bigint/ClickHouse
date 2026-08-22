@@ -195,6 +195,14 @@ void AccessChangesNotifier::sendNotifications()
             }
         }
 
+        /// A handler can start a deferral while this delivery is in progress. Preserve any changes
+        /// it queued for the later flush instead of delivering a new batch through that deferral.
+        if (handlers->notification_deferral_depth != 0)
+        {
+            handlers->notification_pending = true;
+            break;
+        }
+
         /// Stop once a pass produced no new changes.
         std::lock_guard queue_lock{queue_mutex};
         if (queue.empty())
