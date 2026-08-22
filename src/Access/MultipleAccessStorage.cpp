@@ -405,17 +405,41 @@ void MultipleAccessStorage::reload(ReloadMode reload_mode)
 
 bool MultipleAccessStorage::insertImpl(const UUID & id, const AccessEntityPtr & entity, bool replace_if_exists, bool throw_if_exists, UUID * conflicting_id)
 {
-    std::shared_ptr<IAccessStorage> storage_for_insertion;
-
     auto storages = getStoragesInternal();
+    StoragePtr storage_by_id;
+    StoragePtr storage_by_name;
+    StoragePtr first_writable_storage;
+
     for (const auto & storage : *storages)
     {
-        if (!storage->isReadOnly() || storage->find(entity->getType(), entity->getName()))
-        {
-            storage_for_insertion = storage;
-            break;
-        }
+        if (!first_writable_storage && !storage->isReadOnly())
+            first_writable_storage = storage;
+        if (!storage_by_id && storage->exists(id))
+            storage_by_id = storage;
+        if (!storage_by_name && storage->find(entity->getType(), entity->getName()))
+            storage_by_name = storage;
     }
+
+    /// A single nested storage can resolve both collisions atomically. Two different
+    /// storages cannot, so replacing either entity would leave the other conflict behind.
+    if (replace_if_exists && storage_by_id && storage_by_name && (storage_by_id != storage_by_name))
+    {
+        const auto existing_entity = storage_by_id->read(id);
+        throw Exception(
+            ErrorCodes::ACCESS_ENTITY_ALREADY_EXISTS,
+            "Could not insert {} because its ID belongs to {} in {}, while {} already exists in {}",
+            entity->formatTypeWithName(),
+            existing_entity->formatTypeWithName(),
+            storage_by_id->getStorageName(),
+            entity->formatTypeWithName(),
+            storage_by_name->getStorageName());
+    }
+
+    /// Nested storages check name collisions before ID collisions, so preserve that
+    /// behavior when both collisions exist and replacement is disabled.
+    auto storage_for_insertion = storage_by_name ? storage_by_name : storage_by_id;
+    if (!storage_for_insertion)
+        storage_for_insertion = first_writable_storage;
 
     if (!storage_for_insertion)
     {

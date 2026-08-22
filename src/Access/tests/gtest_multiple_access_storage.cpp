@@ -75,6 +75,56 @@ TEST(MultipleAccessStorage, CollisionCheckUsesEntityReturnedToNestedStorage)
     EXPECT_EQ(lower_priority_storage->read<User>(lower_priority_id)->getName(), "available_name");
 }
 
+TEST(MultipleAccessStorage, InsertFindsNameCollisionInLaterStorage)
+{
+    AccessChangesNotifier notifier;
+    auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", notifier, true);
+    auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", notifier, true);
+
+    const auto existing_id = lower_priority_storage->insert(makeUser("existing_user"));
+
+    MultipleAccessStorage storage;
+    storage.setStorages({higher_priority_storage, lower_priority_storage});
+
+    UUID conflicting_id;
+    EXPECT_FALSE(storage.insert(UUIDHelpers::generateV4(), makeUser("existing_user"), false, false, &conflicting_id));
+    EXPECT_EQ(conflicting_id, existing_id);
+    EXPECT_TRUE(higher_priority_storage->findAll<User>().empty());
+}
+
+TEST(MultipleAccessStorage, ReplaceFindsIDCollisionInLaterStorage)
+{
+    AccessChangesNotifier notifier;
+    auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", notifier, true);
+    auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", notifier, true);
+
+    const auto existing_id = lower_priority_storage->insert(makeUser("old_name"));
+
+    MultipleAccessStorage storage;
+    storage.setStorages({higher_priority_storage, lower_priority_storage});
+
+    EXPECT_TRUE(storage.insert(existing_id, makeUser("new_name"), true, false));
+    EXPECT_TRUE(higher_priority_storage->findAll<User>().empty());
+    EXPECT_EQ(lower_priority_storage->read<User>(existing_id)->getName(), "new_name");
+}
+
+TEST(MultipleAccessStorage, ReplaceRejectsCollisionsInDifferentStorages)
+{
+    AccessChangesNotifier notifier;
+    auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", notifier, true);
+    auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", notifier, true);
+
+    const auto conflicting_name_id = higher_priority_storage->insert(makeUser("new_name"));
+    const auto conflicting_id = lower_priority_storage->insert(makeUser("old_name"));
+
+    MultipleAccessStorage storage;
+    storage.setStorages({higher_priority_storage, lower_priority_storage});
+
+    EXPECT_THROW(storage.insert(conflicting_id, makeUser("new_name"), true, false), Exception);
+    EXPECT_EQ(higher_priority_storage->read<User>(conflicting_name_id)->getName(), "new_name");
+    EXPECT_EQ(lower_priority_storage->read<User>(conflicting_id)->getName(), "old_name");
+}
+
 TEST(MultipleAccessStorage, MovePreservesReferencesToMovedEntity)
 {
     AccessChangesNotifier notifier;
