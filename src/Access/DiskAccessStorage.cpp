@@ -112,9 +112,10 @@ namespace
         const size_t position_after_count = static_cast<size_t>(in.getPosition());
         const size_t remaining_after_count = file_size - position_after_count;
 
-        /// Every entry contains at least a one-byte string length and a 32-byte UUID.
+        /// Every entry contains at least a one-byte string length and a 36-byte textual UUID.
         /// Validate the count before using it as an allocation size.
-        constexpr size_t minimum_entry_size = 33;
+        constexpr size_t uuid_text_size = 36;
+        constexpr size_t minimum_entry_size = 1 + uuid_text_size;
         if (num > (remaining_after_count / minimum_entry_size))
         {
             throw Exception(
@@ -132,8 +133,18 @@ namespace
         {
             const size_t position = static_cast<size_t>(in.getPosition());
             const size_t remaining = file_size - position;
+            if (remaining < uuid_text_size)
+            {
+                throw Exception(
+                    ErrorCodes::CORRUPTED_DATA,
+                    "Access list {} has only {} bytes left for entry {}, expected at least {} for its UUID",
+                    file_path,
+                    remaining,
+                    i,
+                    uuid_text_size);
+            }
             String name;
-            readStringBinary(name, in, remaining - 32);
+            readStringBinary(name, in, remaining - uuid_text_size);
             UUID id;
             readUUIDText(id, in);
             id_name_pairs.emplace_back(id, std::move(name));
