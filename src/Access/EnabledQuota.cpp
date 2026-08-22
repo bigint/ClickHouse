@@ -13,6 +13,7 @@ namespace DB
 {
 namespace ErrorCodes
 {
+    extern const int BAD_ARGUMENTS;
     extern const int QUOTA_EXCEEDED;
 }
 
@@ -159,6 +160,9 @@ struct EnabledQuota::Impl
 EnabledQuota::Interval::Interval(std::chrono::seconds duration_, bool randomize_interval_, std::chrono::system_clock::time_point current_time_)
     : duration(duration_) , randomize_interval(randomize_interval_)
 {
+    if (duration <= std::chrono::seconds::zero())
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "Quota interval duration must be positive, got {} seconds", duration.count());
+
     std::chrono::system_clock::time_point initial_end{};
     if (randomize_interval_)
         initial_end += Impl::randomDuration(duration_);

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <Access/EnabledQuota.h>
+#include <Common/Exception.h>
 
 #include <boost/smart_ptr/make_shared.hpp>
 
@@ -45,6 +46,11 @@ struct EnabledQuotaTestAccess
         constexpr auto queries_index = static_cast<size_t>(QuotaType::QUERIES);
         return state.intervals->intervals.front().used[queries_index];
     }
+
+    static void constructInterval(std::chrono::seconds duration)
+    {
+        [[maybe_unused]] EnabledQuota::Interval interval(duration, false, std::chrono::system_clock::now());
+    }
 };
 
 TEST(EnabledQuota, ResetsExpiredIntervalBeforeLowUsage)
@@ -54,6 +60,12 @@ TEST(EnabledQuota, ResetsExpiredIntervalBeforeLowUsage)
     state.enabled_quota->used(QuotaType::QUERIES, 1);
 
     EXPECT_EQ(1, EnabledQuotaTestAccess::getQueriesUsed(state));
+}
+
+TEST(EnabledQuota, RejectsNonPositiveIntervalDuration)
+{
+    EXPECT_THROW(EnabledQuotaTestAccess::constructInterval(std::chrono::seconds::zero()), Exception);
+    EXPECT_THROW(EnabledQuotaTestAccess::constructInterval(std::chrono::seconds{-1}), Exception);
 }
 
 }
