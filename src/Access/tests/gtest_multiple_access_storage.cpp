@@ -241,6 +241,46 @@ TEST(MultipleAccessStorage, RemoveIsSerializedWithOtherMutations)
     EXPECT_FALSE(second_storage->exists(second_id));
 }
 
+TEST(MultipleAccessStorage, StorageTopologyChangesAreSerializedWithMutations)
+{
+    AccessChangesNotifier notifier;
+    auto first_storage = std::make_shared<MemoryAccessStorage>("first", notifier, true);
+    auto second_storage = std::make_shared<MemoryAccessStorage>("second", notifier, true);
+    const auto id = first_storage->insert(makeUser("user"));
+
+    MultipleAccessStorage storage;
+    storage.setStorages({first_storage, second_storage});
+
+    std::promise<void> update_entered_promise;
+    auto update_entered = update_entered_promise.get_future();
+    std::promise<void> release_update_promise;
+    auto release_update = release_update_promise.get_future();
+    auto update = std::async(
+        std::launch::async,
+        [&]
+        {
+            storage.update(
+                id,
+                [&](const AccessEntityPtr & entity, const UUID &)
+                {
+                    update_entered_promise.set_value();
+                    release_update.wait();
+                    return entity;
+                });
+        });
+    update_entered.wait();
+
+    auto topology_change = std::async(std::launch::async, [&] { storage.setStorages({first_storage}); });
+    EXPECT_EQ(topology_change.wait_for(std::chrono::milliseconds(50)), std::future_status::timeout);
+
+    release_update_promise.set_value();
+    update.get();
+    topology_change.get();
+    const auto storages = storage.getStorages();
+    ASSERT_EQ(storages.size(), 1u);
+    EXPECT_EQ(storages.front(), first_storage);
+}
+
 TEST(MultipleAccessStorage, InsertFindsNameCollisionInLaterStorage)
 {
     AccessChangesNotifier notifier;
