@@ -347,6 +347,23 @@ void AuthenticationData::setSalt(String salt_)
 {
     if (type != AuthenticationType::SHA256_PASSWORD && type != AuthenticationType::SCRAM_SHA256_PASSWORD)
         throw Exception(ErrorCodes::NOT_IMPLEMENTED, "setSalt(): authentication type {} not supported", toString(type));
+
+    if (type == AuthenticationType::SCRAM_SHA256_PASSWORD && !salt_.empty())
+    {
+        String decoded_salt;
+        try
+        {
+            decoded_salt = base64Decode(salt_);
+        }
+        catch (const std::exception &)
+        {
+            throw Exception(ErrorCodes::BAD_ARGUMENTS, "SCRAM SHA256 salt must use canonical Base64 encoding");
+        }
+
+        if (base64Encode(decoded_salt) != salt_)
+            throw Exception(ErrorCodes::BAD_ARGUMENTS, "SCRAM SHA256 salt must use canonical Base64 encoding");
+    }
+
     salt = std::move(salt_);
 }
 

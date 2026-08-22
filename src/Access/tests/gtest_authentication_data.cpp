@@ -54,6 +54,17 @@ TEST(AuthenticationData, ScramPasswordHashMustHaveSHA256Length)
     EXPECT_THROW(authentication_data.setPasswordHashBinary(AuthenticationData::Digest(33), std::nullopt, false), Exception);
 }
 
+TEST(AuthenticationData, ScramSaltMustUseCanonicalBase64)
+{
+    AuthenticationData authentication_data{AuthenticationType::SCRAM_SHA256_PASSWORD};
+
+    EXPECT_NO_THROW(authentication_data.setSalt(""));
+    EXPECT_NO_THROW(authentication_data.setSalt("YWJj"));
+    EXPECT_THROW(authentication_data.setSalt("not@base64"), Exception);
+    EXPECT_THROW(authentication_data.setSalt("a"), Exception);
+    EXPECT_EQ(authentication_data.getSalt(), "YWJj");
+}
+
 TEST(AuthenticationData, InvalidHashDoesNotChangeSecondFactor)
 {
     AuthenticationData authentication_data{AuthenticationType::SCRAM_SHA256_PASSWORD};
