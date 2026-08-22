@@ -1,5 +1,12 @@
+#include <Access/Authentication.h>
 #include <Access/AuthenticationData.h>
 #include <Access/Common/OneTimePassword.h>
+#include <Access/Credentials.h>
+#include <Access/ExternalAuthenticators.h>
+#include <Common/Base64.h>
+#include <Common/OpenSSLHelpers.h>
+#include <Common/SettingsChanges.h>
+#include <Interpreters/ClientInfo.h>
 #include <gtest/gtest.h>
 
 using namespace DB;
@@ -37,3 +44,27 @@ TEST(AuthenticationData, NoAuthenticationRoundTripPreservesValidUntil)
 
     EXPECT_EQ(restored.getValidUntil(), original.getValidUntil());
 }
+
+#if USE_SSL
+TEST(Authentication, ScramCredentialsRejectOtherAuthenticationTypes)
+{
+    const std::string auth_message = "auth-message";
+    const auto client_key = hmacSHA256({}, "Client Key");
+    const auto stored_key = encodeSHA256(client_key);
+    const auto client_signature = hmacSHA256(stored_key, auth_message);
+
+    String client_proof(client_key.size(), 0);
+    for (size_t i = 0; i != client_key.size(); ++i)
+        client_proof[i] = client_key[i] ^ client_signature[i];
+
+    ScramSHA256Credentials credentials{"user", base64Encode(client_proof), auth_message, 4096};
+    AuthenticationData no_authentication{AuthenticationType::NO_AUTHENTICATION};
+    ExternalAuthenticators external_authenticators;
+    ClientInfo client_info;
+    SettingsChanges settings;
+
+    EXPECT_EQ(
+        Authentication::areCredentialsValid(credentials, no_authentication, external_authenticators, client_info, settings),
+        Authentication::CredentialsCheckResult::Fail);
+}
+#endif

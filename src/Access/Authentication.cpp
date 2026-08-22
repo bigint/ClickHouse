@@ -110,6 +110,9 @@ namespace
         const ScramSHA256Credentials * scram_sha256_credentials,
         const AuthenticationData & authentication_method)
     {
+        if (authentication_method.getType() != AuthenticationType::SCRAM_SHA256_PASSWORD)
+            return false;
+
         const auto & client_proof = scram_sha256_credentials->getClientProof();
         const auto & auth_message = scram_sha256_credentials->getAuthMessage();
         const auto & salt = authentication_method.getSalt();
