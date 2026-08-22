@@ -110,17 +110,25 @@ void SettingsProfilesCache::setDefaultProfileName(const String & default_profile
     std::lock_guard lock{mutex};
     ensureAllProfilesRead();
 
+    std::optional<UUID> new_default_profile_id;
     if (default_profile_name.empty())
     {
-        default_profile_id = {};
-        return;
+        new_default_profile_id = {};
+    }
+    else
+    {
+        auto it = profiles_by_name.find(default_profile_name);
+        if (it == profiles_by_name.end())
+            throw Exception(ErrorCodes::THERE_IS_NO_PROFILE, "Settings profile {} not found", backQuote(default_profile_name));
+        new_default_profile_id = it->second;
     }
 
-    auto it = profiles_by_name.find(default_profile_name);
-    if (it == profiles_by_name.end())
-        throw Exception(ErrorCodes::THERE_IS_NO_PROFILE, "Settings profile {} not found", backQuote(default_profile_name));
+    if (default_profile_id == new_default_profile_id)
+        return;
 
-    default_profile_id = it->second;
+    default_profile_id = new_default_profile_id;
+    need_merge_settings_and_constraints = true;
+    mergeSettingsAndConstraintsIfNeeded();
 }
 
 
