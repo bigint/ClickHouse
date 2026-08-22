@@ -108,7 +108,9 @@ boost::intrusive_ptr<ASTSettingsProfileElement> SettingsProfileElement::toAST() 
     ast->value = settingValueToASTField(setting_name, value);
     ast->min_value = settingValueToASTField(setting_name, min_value);
     ast->max_value = settingValueToASTField(setting_name, max_value);
-    ast->disallowed_values = disallowed_values;
+    ast->disallowed_values.reserve(disallowed_values.size());
+    for (const auto & disallowed_value : disallowed_values)
+        ast->disallowed_values.push_back(*settingValueToASTField(setting_name, disallowed_value));
     ast->writability = writability;
 
     return ast;

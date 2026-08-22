@@ -31,6 +31,20 @@ TEST(SettingsProfileElement, CastsDisallowedValuesWithoutOverwritingValue)
     EXPECT_EQ(element.disallowed_values[1].safeGet<UInt64>(), 2);
 }
 
+TEST(SettingsProfileElement, MapDisallowedValueRoundTripsThroughAST)
+{
+    SettingsProfileElement original;
+    original.setting_name = "http_response_headers";
+    original.disallowed_values = {Field{Map{Tuple{String{"X-Test"}, String{"value"}}}}};
+
+    const auto ast = original.toAST();
+    ASSERT_EQ(ast->disallowed_values.size(), 1);
+    EXPECT_EQ(ast->disallowed_values.front().getType(), Field::Types::String);
+
+    const SettingsProfileElement restored{*ast};
+    EXPECT_EQ(restored.disallowed_values, original.disallowed_values);
+}
+
 TEST(SettingsProfilesCache, DefaultProfileChangeRefreshesExistingEnabledSettings)
 {
     AccessControl access_control;
