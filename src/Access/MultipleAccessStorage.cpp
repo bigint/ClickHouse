@@ -435,9 +435,10 @@ bool MultipleAccessStorage::updateImpl(const UUID & id, const UpdateFunc & updat
     auto storages = getStoragesInternal();
     if ((storages->size() > 1) && (storages->front() != storage_for_updating))
     {
-        if (auto old_entity = storage_for_updating->tryRead(id))
+        auto update_func_with_collision_check
+            = [&, storages, storage_for_updating](const AccessEntityPtr & old_entity, const UUID & entity_id)
         {
-            auto new_entity = update_func(old_entity, id);
+            auto new_entity = update_func(old_entity, entity_id);
             if (new_entity->getName() != old_entity->getName())
             {
                 for (const auto & storage : *storages)
@@ -451,7 +452,10 @@ bool MultipleAccessStorage::updateImpl(const UUID & id, const UpdateFunc & updat
                     }
                 }
             }
-        }
+            return new_entity;
+        };
+
+        return storage_for_updating->update(id, update_func_with_collision_check, throw_if_not_exists);
     }
 
     return storage_for_updating->update(id, update_func, throw_if_not_exists);
