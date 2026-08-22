@@ -108,6 +108,7 @@ private:
 
         Interval(const Interval & src) { *this = src; }
         Interval & operator =(const Interval & src);
+        void copyUsageFrom(const Interval & src);
 
         std::chrono::system_clock::time_point getEndOfInterval(std::chrono::system_clock::time_point current_time) const;
         std::chrono::system_clock::time_point getEndOfInterval(std::chrono::system_clock::time_point current_time, bool & counters_were_reset) const;

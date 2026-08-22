@@ -191,6 +191,22 @@ EnabledQuota::Interval & EnabledQuota::Interval::operator =(const Interval & src
 }
 
 
+void EnabledQuota::Interval::copyUsageFrom(const Interval & src)
+{
+    if (this == &src)
+        return;
+
+    std::scoped_lock both_locks(src.mutex, mutex);
+    end_of_interval.store(src.end_of_interval.load());
+    for (auto quota_type : collections::range(QuotaType::MAX))
+    {
+        auto quota_type_i = static_cast<size_t>(quota_type);
+        used[quota_type_i].store(src.used[quota_type_i].load());
+    }
+    per_hash_used = src.per_hash_used;
+}
+
+
 /// Returns the end of the current interval. If the passed `current_time` is greater than that end,
 /// the function automatically recalculates the interval's end by adding the interval's duration
 /// one or more times until the interval's end is greater than `current_time`.

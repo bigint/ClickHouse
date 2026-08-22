@@ -254,12 +254,7 @@ QuotaCache::IntervalsStore::rebuildIntervals(const String & key, std::chrono::sy
 
             /// Found an interval with the same duration, we need to copy its usage information to `result`.
             const auto & current_interval = *lower_bound;
-            for (auto quota_type : collections::range(QuotaType::MAX))
-            {
-                auto quota_type_i = static_cast<size_t>(quota_type);
-                new_interval.used[quota_type_i].store(current_interval.used[quota_type_i].load());
-                new_interval.end_of_interval.store(current_interval.end_of_interval.load());
-            }
+            new_interval.copyUsageFrom(current_interval);
         }
         it->second = new_intervals;
     }
