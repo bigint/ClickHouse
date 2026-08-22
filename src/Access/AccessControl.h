@@ -114,6 +114,9 @@ public:
     /// Reloads and updates all access entities.
     void reload(ReloadMode reload_mode) override;
 
+    void
+    moveAccessEntities(const std::vector<UUID> & ids, const String & source_storage_name, const String & destination_storage_name) override;
+
     using OnChangedHandler = AccessChangesNotifier::OnChangedHandler;
 
     /// Subscribes for all changes of entities of a given type (see AccessChangesNotifier::subscribeForChanges).

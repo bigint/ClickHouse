@@ -55,7 +55,8 @@ public:
     /// Search for an access entity storage, excluding one. Returns nullptr if not found.
     StoragePtr findExcludingStorage(AccessEntityType type, const String & name, StoragePtr exclude) const;
 
-    void moveAccessEntities(const std::vector<UUID> & ids, const String & source_storage_name, const String & destination_storage_name);
+    virtual void
+    moveAccessEntities(const std::vector<UUID> & ids, const String & source_storage_name, const String & destination_storage_name);
 
     bool exists(const UUID & id) const override;
 

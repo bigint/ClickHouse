@@ -549,6 +549,21 @@ void AccessControl::reload(ReloadMode reload_mode)
     changes_notifier->sendNotifications();
 }
 
+void AccessControl::moveAccessEntities(
+    const std::vector<UUID> & ids, const String & source_storage_name, const String & destination_storage_name)
+{
+    try
+    {
+        MultipleAccessStorage::moveAccessEntities(ids, source_storage_name, destination_storage_name);
+    }
+    catch (...)
+    {
+        changes_notifier->sendNotifications();
+        throw;
+    }
+    changes_notifier->sendNotifications();
+}
+
 scope_guard AccessControl::subscribeForChanges(AccessEntityType type, const OnChangedHandler & handler) const
 {
     return changes_notifier->subscribeForChanges(type, handler);

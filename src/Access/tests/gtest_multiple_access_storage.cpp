@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <Access/AccessChangesNotifier.h>
+#include <Access/AccessControl.h>
 #include <Access/MemoryAccessStorage.h>
 #include <Access/MultipleAccessStorage.h>
 #include <Access/Role.h>
@@ -99,4 +100,31 @@ TEST(MultipleAccessStorage, MoveRollsBackPartialDestinationInsertion)
     EXPECT_TRUE(source_storage->exists(conflicting_role_id));
     EXPECT_FALSE(destination_storage->exists(first_role_id));
     EXPECT_EQ(destination_storage->getID<Role>("conflicting_role"), destination_role_id);
+}
+
+TEST(AccessControl, MoveDeliversNestedStorageNotifications)
+{
+    AccessControl access_control;
+    auto source_storage = std::make_shared<MemoryAccessStorage>("source", access_control.getChangesNotifier(), true);
+    auto destination_storage = std::make_shared<MemoryAccessStorage>("destination", access_control.getChangesNotifier(), true);
+    access_control.setStorages({source_storage, destination_storage});
+
+    auto role = std::make_shared<Role>();
+    role->setName("moved_role");
+    const auto role_id = source_storage->insert(role);
+    access_control.getChangesNotifier().sendNotifications();
+
+    size_t handler_calls = 0;
+    size_t delivered_changes = 0;
+    auto subscription = access_control.subscribeForChanges<Role>(
+        [&](const std::vector<AccessChangesNotifier::Change> & changes)
+        {
+            ++handler_calls;
+            delivered_changes += changes.size();
+        });
+
+    access_control.moveAccessEntities({role_id}, source_storage->getStorageName(), destination_storage->getStorageName());
+
+    EXPECT_EQ(handler_calls, 1u);
+    EXPECT_EQ(delivered_changes, 2u);
 }
