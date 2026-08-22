@@ -276,6 +276,10 @@ void AuthenticationData::setPasswordHashBinary(const Digest & hash, std::optiona
 
         case AuthenticationType::SCRAM_SHA256_PASSWORD:
         {
+            if (hash.size() != 32)
+                throw Exception(ErrorCodes::BAD_ARGUMENTS,
+                                "Password hash for the 'SCRAM_SHA256_PASSWORD' authentication type has length {} "
+                                "but must be exactly 32 bytes.", hash.size());
             password_hash = hash;
             return;
         }

@@ -45,6 +45,15 @@ TEST(AuthenticationData, NoAuthenticationRoundTripPreservesValidUntil)
     EXPECT_EQ(restored.getValidUntil(), original.getValidUntil());
 }
 
+TEST(AuthenticationData, ScramPasswordHashMustHaveSHA256Length)
+{
+    AuthenticationData authentication_data{AuthenticationType::SCRAM_SHA256_PASSWORD};
+
+    EXPECT_THROW(authentication_data.setPasswordHashBinary(AuthenticationData::Digest(31), std::nullopt, false), Exception);
+    EXPECT_NO_THROW(authentication_data.setPasswordHashBinary(AuthenticationData::Digest(32), std::nullopt, false));
+    EXPECT_THROW(authentication_data.setPasswordHashBinary(AuthenticationData::Digest(33), std::nullopt, false), Exception);
+}
+
 #if USE_SSL
 TEST(Authentication, ScramCredentialsRejectOtherAuthenticationTypes)
 {
