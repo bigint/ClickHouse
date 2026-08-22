@@ -542,7 +542,7 @@ AccessEntityPtr DiskAccessStorage::readImpl(const UUID & id, bool throw_if_not_e
         entity = readAccessEntityFromDisk(id);
 
     /// Will replace existing EntityOnDisk with actual entity
-    memory_storage.insert(id, entity, /* replace_if_exists= */ true, /* throw_if_exists= */ false, /* conflicting_id= */ nullptr);
+    memory_storage.insertNoNotify(id, entity, /* replace_if_exists= */ true, /* throw_if_exists= */ false, /* conflicting_id= */ nullptr);
 
     return entity;
 }
@@ -717,7 +717,12 @@ bool DiskAccessStorage::updateNoLock(const UUID & id, const UpdateFunc & update_
     if (isNotLoadedFromDisk(old_entity))
     {
         old_entity = readAccessEntityFromDisk(id);
-        memory_storage.insert(id, old_entity, /* replace_if_exists= */ true, /* throw_if_exists= */ false, /* conflicting_id= */ nullptr);
+        memory_storage.insertNoNotify(
+            id,
+            old_entity,
+            /* replace_if_exists= */ true,
+            /* throw_if_exists= */ false,
+            /* conflicting_id= */ nullptr);
     }
 
     AccessEntityPtr new_entity = update_func(old_entity, id);

@@ -84,3 +84,32 @@ TEST(DiskAccessStorageRecovery, RebuildRemovesOlderDuplicates)
     ASSERT_TRUE(resolved.has_value());
     EXPECT_EQ(*resolved, id_b);
 }
+
+TEST(DiskAccessStorage, LazyMaterializationDoesNotNotify)
+{
+    Poco::TemporaryFile temp_dir;
+    temp_dir.createDirectories();
+    String dir = temp_dir.path() + "/";
+
+    auto user = std::make_shared<User>();
+    user->setName("alice");
+
+    UUID id;
+    {
+        AccessChangesNotifier notifier;
+        DiskAccessStorage storage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false);
+        id = storage.insert(user);
+    }
+
+    AccessChangesNotifier notifier;
+    DiskAccessStorage storage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false);
+
+    size_t delivered_changes = 0;
+    auto subscription = notifier.subscribeForChanges<User>([&](const std::vector<AccessChangesNotifier::Change> & changes)
+                                                           { delivered_changes += changes.size(); });
+
+    ASSERT_EQ(storage.read<User>(id)->getName(), "alice");
+    notifier.sendNotifications();
+
+    EXPECT_EQ(delivered_changes, 0u);
+}

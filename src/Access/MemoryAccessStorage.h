@@ -39,6 +39,8 @@ public:
     bool isEphemeral() const override { return true; }
 
 private:
+    friend class DiskAccessStorage;
+
     std::optional<UUID> findImpl(AccessEntityType type, const String & name) const override;
     std::vector<UUID> findAllImpl(AccessEntityType type) const override;
     AccessEntityPtr readImpl(const UUID & id, bool throw_if_not_exists) const override;
@@ -47,6 +49,8 @@ private:
     bool updateImpl(const UUID & id, const UpdateFunc & update_func, bool throw_if_not_exists) override;
 
     bool insertNoLock(const UUID & id, const AccessEntityPtr & entity, bool replace_if_exists, bool throw_if_exists, UUID * conflicting_id, bool notify = true);
+    bool
+    insertNoNotify(const UUID & id, const AccessEntityPtr & entity, bool replace_if_exists, bool throw_if_exists, UUID * conflicting_id);
     bool removeNoLock(const UUID & id, bool throw_if_not_exists, bool notify = true);
     bool updateNoLock(const UUID & id, const UpdateFunc & update_func, bool throw_if_not_exists, bool notify = true);
 

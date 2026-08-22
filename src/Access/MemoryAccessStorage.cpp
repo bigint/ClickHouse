@@ -68,6 +68,14 @@ bool MemoryAccessStorage::insertImpl(const UUID & id, const AccessEntityPtr & ne
 }
 
 
+bool MemoryAccessStorage::insertNoNotify(
+    const UUID & id, const AccessEntityPtr & entity, bool replace_if_exists, bool throw_if_exists, UUID * conflicting_id)
+{
+    std::lock_guard lock{mutex};
+    return insertNoLock(id, entity, replace_if_exists, throw_if_exists, conflicting_id, /* notify= */ false);
+}
+
+
 bool MemoryAccessStorage::insertNoLock(const UUID & id, const AccessEntityPtr & new_entity, bool replace_if_exists, bool throw_if_exists, UUID * conflicting_id, bool notify)
 {
     const String & name = new_entity->getName();
