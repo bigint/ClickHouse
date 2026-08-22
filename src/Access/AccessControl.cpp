@@ -575,7 +575,14 @@ AccessChangesNotifier & AccessControl::getChangesNotifier()
 
 scope_guard AccessControl::deferNotificationsForRemove()
 {
-    return changes_notifier->deferNotifications();
+    /// Start notification deferral before taking the mutation lock. Notification handlers can
+    /// perform access mutations, so the opposite acquisition order could deadlock with a handler
+    /// which already owns the notifier's delivery lock.
+    auto notification_deferral = changes_notifier->deferNotifications();
+    auto guard = MultipleAccessStorage::deferNotificationsForRemove();
+    /// Release the mutation lock before ending the deferral and invoking pending handlers.
+    guard.join(std::move(notification_deferral));
+    return guard;
 }
 
 

@@ -202,6 +202,45 @@ TEST(MultipleAccessStorage, MutationsAreSerializedAcrossNestedStorages)
     EXPECT_EQ(second_callback_entered.wait_for(std::chrono::milliseconds(0)), std::future_status::ready);
 }
 
+TEST(MultipleAccessStorage, RemoveIsSerializedWithOtherMutations)
+{
+    AccessChangesNotifier notifier;
+    auto first_storage = std::make_shared<MemoryAccessStorage>("first", notifier, true);
+    auto second_storage = std::make_shared<MemoryAccessStorage>("second", notifier, true);
+    const auto first_id = first_storage->insert(makeUser("first_user"));
+    const auto second_id = second_storage->insert(makeUser("second_user"));
+
+    MultipleAccessStorage storage;
+    storage.setStorages({first_storage, second_storage});
+
+    std::promise<void> update_entered_promise;
+    auto update_entered = update_entered_promise.get_future();
+    std::promise<void> release_update_promise;
+    auto release_update = release_update_promise.get_future();
+    auto update = std::async(
+        std::launch::async,
+        [&]
+        {
+            storage.update(
+                first_id,
+                [&](const AccessEntityPtr & entity, const UUID &)
+                {
+                    update_entered_promise.set_value();
+                    release_update.wait();
+                    return entity;
+                });
+        });
+    update_entered.wait();
+
+    auto removal = std::async(std::launch::async, [&] { storage.remove(second_id); });
+    EXPECT_EQ(removal.wait_for(std::chrono::milliseconds(50)), std::future_status::timeout);
+
+    release_update_promise.set_value();
+    update.get();
+    removal.get();
+    EXPECT_FALSE(second_storage->exists(second_id));
+}
+
 TEST(MultipleAccessStorage, InsertFindsNameCollisionInLaterStorage)
 {
     AccessChangesNotifier notifier;

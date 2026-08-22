@@ -376,6 +376,21 @@ std::optional<std::pair<String, AccessEntityType>> MultipleAccessStorage::readNa
 }
 
 
+scope_guard MultipleAccessStorage::deferNotificationsForRemove()
+{
+    mutation_mutex.lock();
+    try
+    {
+        return [this] { mutation_mutex.unlock(); };
+    }
+    catch (...)
+    {
+        mutation_mutex.unlock();
+        throw;
+    }
+}
+
+
 bool MultipleAccessStorage::isReadOnly() const
 {
     auto storages = getStoragesInternal();
@@ -501,6 +516,7 @@ bool MultipleAccessStorage::insertImpl(const UUID & id, const AccessEntityPtr & 
 
 bool MultipleAccessStorage::removeImpl(const UUID & id, bool throw_if_not_exists)
 {
+    std::lock_guard mutation_lock{mutation_mutex};
     if (auto storage = findStorage(id))
         return storage->remove(id, throw_if_not_exists);
 

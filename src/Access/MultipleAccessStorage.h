@@ -67,6 +67,7 @@ public:
     bool containsStorage(std::string_view storage_type) const;
 
 protected:
+    scope_guard deferNotificationsForRemove() override;
     std::optional<UUID> findImpl(AccessEntityType type, const String & name) const override;
     std::vector<UUID> findAllImpl(AccessEntityType type) const override;
     AccessEntityPtr readImpl(const UUID & id, bool throw_if_not_exists) const override;
