@@ -49,7 +49,8 @@ public:
     bool isBackupAllowed() const override { return backup_allowed; }
 
 private:
-    void parseFromConfig(const Poco::Util::AbstractConfiguration & config, const String & config_path);
+    std::vector<std::pair<UUID, AccessEntityPtr>>
+    parseFromConfig(const Poco::Util::AbstractConfiguration & config, const String & config_path) const;
     std::optional<UUID> findImpl(AccessEntityType type, const String & name) const override;
     std::vector<UUID> findAllImpl(AccessEntityType type) const override;
     AccessEntityPtr readImpl(const UUID & id, bool throw_if_not_exists) const override;

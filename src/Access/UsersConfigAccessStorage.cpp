@@ -56,16 +56,19 @@ bool UsersConfigAccessStorage::isPathEqual(const String & path_) const
 
 void UsersConfigAccessStorage::setConfig(const Poco::Util::AbstractConfiguration & config)
 {
+    auto all_entities = parseFromConfig(config, {});
+
     std::lock_guard reconfiguration_lock{reconfiguration_mutex};
     auto config_reloader_to_stop = std::move(config_reloader);
     config_reloader_to_stop.reset();
 
     std::lock_guard lock{load_mutex};
     path.clear();
-    parseFromConfig(config, {});
+    memory_storage.setAll(all_entities);
 }
 
-void UsersConfigAccessStorage::parseFromConfig(const Poco::Util::AbstractConfiguration & config, const String & config_path)
+std::vector<std::pair<UUID, AccessEntityPtr>>
+UsersConfigAccessStorage::parseFromConfig(const Poco::Util::AbstractConfiguration & config, const String & config_path) const
 {
     try
     {
@@ -90,7 +93,7 @@ void UsersConfigAccessStorage::parseFromConfig(const Poco::Util::AbstractConfigu
         for (const auto & entity : parser.parseRoles(config, role_ids_from_users_config))
             all_entities.emplace_back(UsersConfigParser::generateID(*entity), entity);
 
-        memory_storage.setAll(all_entities);
+        return all_entities;
     }
     catch (Exception & e)
     {
@@ -122,7 +125,7 @@ void UsersConfigAccessStorage::load(
         [this, users_config_path](Poco::AutoPtr<Poco::Util::AbstractConfiguration> new_config, bool initial_loading)
         {
             Settings::checkNoSettingNamesAtTopLevel(*new_config, users_config_path);
-            parseFromConfig(*new_config, users_config_path);
+            memory_storage.setAll(parseFromConfig(*new_config, users_config_path));
             if (!initial_loading)
                 access_control.getChangesNotifier().sendNotifications();
         });
