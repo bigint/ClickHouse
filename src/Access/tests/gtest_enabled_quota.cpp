@@ -5,6 +5,8 @@
 
 #include <boost/smart_ptr/make_shared.hpp>
 
+#include <limits>
+
 
 namespace DB
 {
@@ -40,6 +42,29 @@ struct EnabledQuotaTestAccess
         return {std::move(enabled_quota), std::move(intervals)};
     }
 
+    static State makeWithCurrentUsage(QuotaValue used, QuotaValue max)
+    {
+        EnabledQuota::Params params;
+        params.user_name = "user";
+        params.client_address = Poco::Net::IPAddress("127.0.0.1");
+        auto enabled_quota = std::shared_ptr<EnabledQuota>(new EnabledQuota(params));
+
+        auto intervals = boost::make_shared<EnabledQuota::Intervals>();
+        intervals->quota_name = "quota";
+        intervals->intervals.emplace_back(std::chrono::minutes(1), false, std::chrono::system_clock::now());
+        auto & interval = intervals->intervals.front();
+        constexpr auto queries_index = static_cast<size_t>(QuotaType::QUERIES);
+        interval.max[queries_index] = max;
+        interval.used[queries_index] = used;
+
+        auto quota = std::make_unique<EnabledQuota::SingleQuota>();
+        quota->intervals = intervals;
+        auto quotas = boost::make_shared<EnabledQuota::Quotas>();
+        quotas->push_back(std::move(quota));
+        enabled_quota->quotas.store(quotas);
+        return {std::move(enabled_quota), std::move(intervals)};
+    }
+
     static QuotaValue getQueriesUsed(const State & state)
     {
         constexpr auto queries_index = static_cast<size_t>(QuotaType::QUERIES);
@@ -65,6 +90,15 @@ TEST(EnabledQuota, RejectsNonPositiveIntervalDuration)
 {
     EXPECT_THROW(EnabledQuotaTestAccess::constructInterval(std::chrono::seconds::zero()), Exception);
     EXPECT_THROW(EnabledQuotaTestAccess::constructInterval(std::chrono::seconds{-1}), Exception);
+}
+
+TEST(EnabledQuota, SaturatesUsageInsteadOfWrapping)
+{
+    auto state = EnabledQuotaTestAccess::makeWithCurrentUsage(0, 10);
+
+    state.enabled_quota->used(QuotaType::QUERIES, std::numeric_limits<QuotaValue>::max(), false);
+    EXPECT_THROW(state.enabled_quota->used(QuotaType::QUERIES, 2), Exception);
+    EXPECT_EQ(std::numeric_limits<QuotaValue>::max(), EnabledQuotaTestAccess::getQueriesUsed(state));
 }
 
 TEST(EnabledQuota, RejectsIntervalDurationOutsideSystemClockRange)

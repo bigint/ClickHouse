@@ -8,6 +8,8 @@
 #include <boost/smart_ptr/make_shared.hpp>
 #include <boost/range/algorithm/fill.hpp>
 
+#include <limits>
+
 
 namespace DB
 {
@@ -45,7 +47,16 @@ struct EnabledQuota::Impl
         for (const auto & interval : intervals.intervals)
         {
             interval.getEndOfInterval(current_time);
-            interval.used[quota_type_i] += value;
+            auto & counter = interval.used[quota_type_i];
+            auto old_value = counter.load();
+            while (true)
+            {
+                const auto new_value = value > std::numeric_limits<QuotaValue>::max() - old_value
+                    ? std::numeric_limits<QuotaValue>::max()
+                    : old_value + value;
+                if (counter.compare_exchange_weak(old_value, new_value))
+                    break;
+            }
         }
     }
 
@@ -67,7 +78,10 @@ struct EnabledQuota::Impl
             QuotaValue current_count = 0;
             {
                 std::lock_guard lock(interval.mutex);
-                current_count = ++interval.per_hash_used[normalized_query_hash];
+                auto & count = interval.per_hash_used[normalized_query_hash];
+                if (count != std::numeric_limits<QuotaValue>::max())
+                    ++count;
+                current_count = count;
             }
 
             /// Update the atomic `used` counter with the max across all hashes for reporting.
