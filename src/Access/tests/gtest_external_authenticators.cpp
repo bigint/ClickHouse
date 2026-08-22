@@ -1,4 +1,6 @@
+#include <Access/AccessControl.h>
 #include <Access/ExternalAuthenticators.h>
+#include <Access/LDAPAccessStorage.h>
 #include <Common/Exception.h>
 #include <Common/Logger.h>
 
@@ -83,6 +85,24 @@ TEST(ExternalAuthenticators, DottedServerNamesUseLiteralLookupNames)
     EXPECT_EQ(
         ExternalAuthenticatorsTestAccess::getLDAPParams(authenticators, "ldap.with.dot").host,
         "127.0.0.1");
+}
+
+TEST(LDAPAccessStorage, DottedCommonRoleNamesUseLiteralNames)
+{
+    AccessControl access_control;
+    const auto config = createConfig(R"(
+        <clickhouse>
+            <server>ldap.with.dot</server>
+            <roles>
+                <role.with.dot/>
+            </roles>
+        </clickhouse>
+    )");
+
+    LDAPAccessStorage storage("ldap", access_control, *config, "");
+    const String params = storage.getStorageParamsJSON();
+    EXPECT_NE(params.find("role.with.dot"), String::npos);
+    EXPECT_EQ(params.find("role\\.with\\.dot"), String::npos);
 }
 
 TEST(ExternalAuthenticators, FailedReloadPreservesPreviousConfiguration)

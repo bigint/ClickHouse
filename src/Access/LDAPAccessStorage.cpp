@@ -8,6 +8,7 @@
 #include <Common/Exception.h>
 #include <Common/logger_useful.h>
 #include <base/scope_guard.h>
+#include <Poco/String.h>
 #include <Poco/Util/AbstractConfiguration.h>
 #include <Poco/JSON/Object.h>
 #include <Poco/JSON/Stringifier.h>
@@ -66,7 +67,14 @@ void LDAPAccessStorage::setConfiguration(const Poco::Util::AbstractConfiguration
         config.keys(prefix_str + "roles", role_names);
 
         // Currently, we only extract names of roles from the section names and assign them directly and unconditionally.
-        common_roles_cfg.insert(role_names.begin(), role_names.end());
+        for (auto role_name : role_names)
+        {
+            const auto bracket_pos = role_name.find('[');
+            if (bracket_pos != String::npos)
+                role_name.resize(bracket_pos);
+            Poco::replaceInPlace(role_name, "\\.", ".");
+            common_roles_cfg.insert(std::move(role_name));
+        }
     }
 
     LDAPClient::RoleSearchParamsList role_search_params_cfg;
