@@ -1,4 +1,6 @@
 #include <Access/AccessControl.h>
+#include <Access/Quota.h>
+#include <Access/RowPolicy.h>
 #include <Access/User.h>
 #include <Access/UsersConfigAccessStorage.h>
 #include <gtest/gtest.h>
@@ -248,6 +250,45 @@ TEST(UsersConfigAccessStorage, InvalidFileReplacementPreservesFileReloader)
 
     EXPECT_FALSE(storage.find<User>("initial_user").has_value());
     EXPECT_TRUE(storage.find<User>("replacement_user").has_value());
+}
+
+TEST_F(UsersConfigMultipleAuthTest, DottedUserNameKeepsQuotaAndRowPolicyAssignments)
+{
+    const std::string xml_config = R"(
+        <clickhouse>
+            <users>
+                <user.name>
+                    <no_password/>
+                    <quota>default</quota>
+                    <databases>
+                        <database>
+                            <table>
+                                <filter>value = 1</filter>
+                            </table>
+                        </database>
+                    </databases>
+                </user.name>
+            </users>
+            <quotas>
+                <default/>
+            </quotas>
+        </clickhouse>
+    )";
+
+    auto config = createConfigFromXML(xml_config);
+    storage->setConfig(*config);
+
+    auto user_id = storage->find<User>("user.name");
+    ASSERT_TRUE(user_id.has_value());
+
+    auto quota = storage->tryRead<Quota>("default");
+    ASSERT_TRUE(quota);
+    EXPECT_TRUE(quota->to_roles.match(*user_id));
+
+    auto policies = storage->readAllWithIDs<RowPolicy>();
+    ASSERT_EQ(policies.size(), 1);
+    EXPECT_EQ(policies.front().second->getShortName(), "user.name");
+    EXPECT_TRUE(policies.front().second->to_roles.match(*user_id));
 }
 
 TEST_F(UsersConfigMultipleAuthTest, FlatNoPassword)

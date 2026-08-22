@@ -49,6 +49,12 @@ namespace ErrorCodes
 
 namespace
 {
+    String unescapeUserName(String user_name)
+    {
+        Poco::replaceInPlace(user_name, "\\.", ".");
+        return user_name;
+    }
+
     template <typename T>
     void parseGrant(T & entity, const String & string_query, const std::unordered_set<UUID> & role_ids_from_users_config, const AccessControl & access_control, LoggerPtr log)
     {
@@ -415,7 +421,7 @@ namespace
 
         /// If the user name contains a dot, it is escaped with a backslash when parsed from the config file.
         /// We need to remove the backslash to get the correct user name.
-        Poco::replaceInPlace(user_name, "\\.", ".");
+        user_name = unescapeUserName(std::move(user_name));
         user->setName(user_name);
 
         const auto auth_methods_config = user_config + ".auth_methods";
@@ -917,7 +923,8 @@ std::vector<AccessEntityPtr> UsersConfigParser::parseQuotas(const Poco::Util::Ab
     for (const auto & user_name : user_names)
     {
         if (config.has("users." + user_name + ".quota"))
-            quota_to_user_ids[config.getString("users." + user_name + ".quota")].push_back(generateID(AccessEntityType::USER, user_name));
+            quota_to_user_ids[config.getString("users." + user_name + ".quota")].push_back(
+                generateID(AccessEntityType::USER, unescapeUserName(user_name)));
     }
 
     Poco::Util::AbstractConfiguration::Keys quota_names;
@@ -955,6 +962,7 @@ std::vector<AccessEntityPtr> UsersConfigParser::parseRowPolicies(const Poco::Uti
 
     for (const String & user_name : user_names)
     {
+        const String normalized_user_name = unescapeUserName(user_name);
         const String databases_config = "users." + user_name + ".databases";
         if (config.has(databases_config))
         {
@@ -990,7 +998,7 @@ std::vector<AccessEntityPtr> UsersConfigParser::parseRowPolicies(const Poco::Uti
                         table_name = table_key;
 
                     String filter_config = table_config + ".filter";
-                    all_filters_map[{database_name, table_name}][user_name] = config.getString(filter_config);
+                    all_filters_map[{database_name, table_name}][normalized_user_name] = config.getString(filter_config);
                 }
             }
         }
@@ -1000,8 +1008,9 @@ std::vector<AccessEntityPtr> UsersConfigParser::parseRowPolicies(const Poco::Uti
     for (auto & [database_and_table_name, user_to_filters] : all_filters_map)
     {
         const auto & [database, table_name] = database_and_table_name;
-        for (const String & user_name : user_names)
+        for (const String & config_user_name : user_names)
         {
+            const String user_name = unescapeUserName(config_user_name);
             String filter;
             auto it = user_to_filters.find(user_name);
             if (it != user_to_filters.end())
