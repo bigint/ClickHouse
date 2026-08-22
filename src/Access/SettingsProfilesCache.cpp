@@ -54,15 +54,11 @@ void SettingsProfilesCache::ensureAllProfilesRead()
 
     /// Start clean: a previous attempt may have thrown mid-scan.
     all_profiles.clear();
-    profiles_by_name.clear();
     for (const UUID & id : access_control.findAll<SettingsProfile>())
     {
         auto profile = access_control.tryRead<SettingsProfile>(id);
         if (profile)
-        {
             all_profiles.emplace(id, profile);
-            profiles_by_name[profile->getName()] = id;
-        }
     }
 
     /// Set only after the subscription and the initial read succeed.
@@ -75,17 +71,10 @@ void SettingsProfilesCache::profileAddedOrChanged(const UUID & profile_id, const
     /// `mutex` is already locked.
     auto it = all_profiles.find(profile_id);
     if (it == all_profiles.end())
-    {
         all_profiles.emplace(profile_id, new_profile);
-        profiles_by_name[new_profile->getName()] = profile_id;
-    }
     else
     {
-        auto old_profile = it->second;
         it->second = new_profile;
-        if (old_profile->getName() != new_profile->getName())
-            profiles_by_name.erase(old_profile->getName());
-        profiles_by_name[new_profile->getName()] = profile_id;
     }
     refreshDefaultProfileID();
     profile_infos_cache.clear();
@@ -99,7 +88,6 @@ void SettingsProfilesCache::profileRemoved(const UUID & profile_id)
     auto it = all_profiles.find(profile_id);
     if (it == all_profiles.end())
         return;
-    profiles_by_name.erase(it->second->getName());
     all_profiles.erase(it);
     refreshDefaultProfileID();
     profile_infos_cache.clear();
@@ -116,11 +104,7 @@ void SettingsProfilesCache::refreshDefaultProfileID()
         return;
     }
 
-    const auto it = profiles_by_name.find(default_profile_name);
-    if (it == profiles_by_name.end())
-        default_profile_id.reset();
-    else
-        default_profile_id = it->second;
+    default_profile_id = access_control.find<SettingsProfile>(default_profile_name);
 }
 
 
@@ -136,10 +120,9 @@ void SettingsProfilesCache::setDefaultProfileName(const String & default_profile
     }
     else
     {
-        auto it = profiles_by_name.find(default_profile_name);
-        if (it == profiles_by_name.end())
+        new_default_profile_id = access_control.find<SettingsProfile>(default_profile_name);
+        if (!new_default_profile_id)
             throw Exception(ErrorCodes::THERE_IS_NO_PROFILE, "Settings profile {} not found", backQuote(default_profile_name));
-        new_default_profile_id = it->second;
     }
 
     if ((this->default_profile_name == default_profile_name) && (default_profile_id == new_default_profile_id))

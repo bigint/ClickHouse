@@ -164,6 +164,30 @@ TEST(SettingsProfilesCache, DefaultProfileTracksConfiguredName)
     EXPECT_EQ(std::vector<UUID>{replacement_id}, enabled_settings->getInfo()->profiles_with_implicit);
 }
 
+TEST(SettingsProfilesCache, DefaultProfileUsesStoragePriority)
+{
+    AccessControl access_control;
+    auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", access_control.getChangesNotifier(), true);
+    auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", access_control.getChangesNotifier(), true);
+
+    auto higher_priority_profile = std::make_shared<SettingsProfile>();
+    higher_priority_profile->setName("shared");
+    const auto higher_priority_id = higher_priority_storage->insert(higher_priority_profile);
+
+    auto lower_priority_profile = std::make_shared<SettingsProfile>();
+    lower_priority_profile->setName("shared");
+    const auto lower_priority_id = lower_priority_storage->insert(lower_priority_profile);
+
+    access_control.setStorages({higher_priority_storage, lower_priority_storage});
+    access_control.setDefaultProfileName("shared");
+    auto enabled_settings = access_control.getEnabledSettings(UUIDHelpers::generateV4(), {}, {}, {});
+    EXPECT_EQ(std::vector<UUID>{higher_priority_id}, enabled_settings->getInfo()->profiles_with_implicit);
+
+    higher_priority_storage->remove(higher_priority_id);
+    access_control.getChangesNotifier().sendNotifications();
+    EXPECT_EQ(std::vector<UUID>{lower_priority_id}, enabled_settings->getInfo()->profiles_with_implicit);
+}
+
 TEST(SettingsProfilesCache, EnabledSettingsOutlivesAccessControl)
 {
     std::shared_ptr<const EnabledSettings> enabled_settings;
