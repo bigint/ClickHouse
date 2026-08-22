@@ -49,7 +49,7 @@ public:
     bool isBackupAllowed() const override { return backup_allowed; }
 
 private:
-    void parseFromConfig(const Poco::Util::AbstractConfiguration & config);
+    void parseFromConfig(const Poco::Util::AbstractConfiguration & config, const String & config_path);
     std::optional<UUID> findImpl(AccessEntityType type, const String & name) const override;
     std::vector<UUID> findAllImpl(AccessEntityType type) const override;
     AccessEntityPtr readImpl(const UUID & id, bool throw_if_not_exists) const override;
@@ -57,9 +57,10 @@ private:
 
     AccessControl & access_control;
     MemoryAccessStorage memory_storage;
-    String path;
-    std::unique_ptr<ConfigReloader> config_reloader;
+    String path TSA_GUARDED_BY(load_mutex);
+    std::unique_ptr<ConfigReloader> config_reloader TSA_GUARDED_BY(reconfiguration_mutex);
     bool backup_allowed = false;
     mutable std::mutex load_mutex;
+    mutable std::mutex reconfiguration_mutex;
 };
 }

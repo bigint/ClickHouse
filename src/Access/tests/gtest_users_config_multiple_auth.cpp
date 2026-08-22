@@ -126,6 +126,45 @@ TEST(UsersConfigAccessStorage, ReloadCallbackOwnsConfigPath)
     }
 }
 
+TEST(UsersConfigAccessStorage, ReloadNotificationHandlerCanReadPath)
+{
+    Poco::TemporaryFile temp_dir;
+    temp_dir.createDirectories();
+    const String config_path = temp_dir.path() + "/users.xml";
+
+    std::ofstream{config_path} << R"(
+        <clickhouse>
+            <users>
+                <initial_user><no_password/></initial_user>
+            </users>
+        </clickhouse>
+    )";
+
+    AccessControl access_control;
+    UsersConfigAccessStorage storage("users_config_test", access_control, false);
+    storage.load(config_path, "", temp_dir.path(), [] { return zkutil::ZooKeeperPtr{}; });
+    access_control.getChangesNotifier().sendNotifications();
+
+    bool path_was_read = false;
+    auto subscription = access_control.subscribeForChanges<User>(
+        [&](const std::vector<AccessChangesNotifier::Change> & changes)
+        {
+            if (!changes.empty())
+                path_was_read = (storage.getPath() == config_path);
+        });
+
+    std::ofstream{config_path} << R"(
+        <clickhouse>
+            <users>
+                <replacement_user><no_password/></replacement_user>
+            </users>
+        </clickhouse>
+    )";
+
+    storage.reload(IAccessStorage::ReloadMode::ALL);
+    EXPECT_TRUE(path_was_read);
+}
+
 TEST_F(UsersConfigMultipleAuthTest, FlatNoPassword)
 {
     const std::string xml_config = R"(

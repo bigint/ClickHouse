@@ -23,7 +23,12 @@ UsersConfigAccessStorage::UsersConfigAccessStorage(const String & storage_name_,
 {
 }
 
-UsersConfigAccessStorage::~UsersConfigAccessStorage() = default;
+UsersConfigAccessStorage::~UsersConfigAccessStorage()
+{
+    std::lock_guard reconfiguration_lock{reconfiguration_mutex};
+    auto config_reloader_to_stop = std::move(config_reloader);
+    config_reloader_to_stop.reset();
+}
 
 
 String UsersConfigAccessStorage::getStorageParamsJSON() const
@@ -51,13 +56,16 @@ bool UsersConfigAccessStorage::isPathEqual(const String & path_) const
 
 void UsersConfigAccessStorage::setConfig(const Poco::Util::AbstractConfiguration & config)
 {
+    std::lock_guard reconfiguration_lock{reconfiguration_mutex};
+    auto config_reloader_to_stop = std::move(config_reloader);
+    config_reloader_to_stop.reset();
+
     std::lock_guard lock{load_mutex};
     path.clear();
-    config_reloader.reset();
-    parseFromConfig(config);
+    parseFromConfig(config, {});
 }
 
-void UsersConfigAccessStorage::parseFromConfig(const Poco::Util::AbstractConfiguration & config)
+void UsersConfigAccessStorage::parseFromConfig(const Poco::Util::AbstractConfiguration & config, const String & config_path)
 {
     try
     {
@@ -86,7 +94,8 @@ void UsersConfigAccessStorage::parseFromConfig(const Poco::Util::AbstractConfigu
     }
     catch (Exception & e)
     {
-        e.addMessage(fmt::format("while loading {}", path.empty() ? "configuration" : ("configuration file " + quoteString(path))));
+        e.addMessage(
+            fmt::format("while loading {}", config_path.empty() ? "configuration" : ("configuration file " + quoteString(config_path))));
         throw;
     }
 }
@@ -97,9 +106,12 @@ void UsersConfigAccessStorage::load(
     const String & preprocessed_dir,
     const zkutil::GetZooKeeper & get_zookeeper_function)
 {
+    std::lock_guard reconfiguration_lock{reconfiguration_mutex};
+    auto config_reloader_to_stop = std::move(config_reloader);
+    config_reloader_to_stop.reset();
+
     std::lock_guard lock{load_mutex};
     path = std::filesystem::path{users_config_path}.lexically_normal();
-    config_reloader.reset();
     auto zk_node_cache = std::make_unique<zkutil::ZooKeeperNodeCache>(get_zookeeper_function);
     config_reloader = std::make_unique<ConfigReloader>(
         users_config_path,
@@ -110,7 +122,7 @@ void UsersConfigAccessStorage::load(
         [this, users_config_path](Poco::AutoPtr<Poco::Util::AbstractConfiguration> new_config, bool initial_loading)
         {
             Settings::checkNoSettingNamesAtTopLevel(*new_config, users_config_path);
-            parseFromConfig(*new_config);
+            parseFromConfig(*new_config, users_config_path);
             if (!initial_loading)
                 access_control.getChangesNotifier().sendNotifications();
         });
@@ -118,21 +130,21 @@ void UsersConfigAccessStorage::load(
 
 void UsersConfigAccessStorage::startPeriodicReloading()
 {
-    std::lock_guard lock{load_mutex};
+    std::lock_guard lock{reconfiguration_mutex};
     if (config_reloader)
         config_reloader->start();
 }
 
 void UsersConfigAccessStorage::stopPeriodicReloading()
 {
-    std::lock_guard lock{load_mutex};
+    std::lock_guard lock{reconfiguration_mutex};
     if (config_reloader)
         config_reloader->stop();
 }
 
 void UsersConfigAccessStorage::reload(ReloadMode /* reload_mode */)
 {
-    std::lock_guard lock{load_mutex};
+    std::lock_guard lock{reconfiguration_mutex};
     if (config_reloader)
         config_reloader->reload();
 }
