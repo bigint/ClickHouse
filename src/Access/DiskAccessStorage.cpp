@@ -337,6 +337,7 @@ void DiskAccessStorage::scheduleWriteLists(AccessEntityType type)
 
     LOG_TRACE(getLogger(), "Created need_rebuild_lists.mark, starting background lists-writing thread");
 
+    lists_writing_thread_exit_requested = false;
     lists_writing_thread = std::make_unique<ThreadFromGlobalPool>(&DiskAccessStorage::listsWritingThreadFunc, this);
     lists_writing_thread_is_waiting = true;
 }
@@ -351,7 +352,7 @@ void DiskAccessStorage::listsWritingThreadFunc()
         /// the following timeout.
         const auto timeout = std::chrono::minutes(1);
         SCOPE_EXIT({ lists_writing_thread_is_waiting = false; });
-        if (lists_writing_thread_should_exit.wait_for(lock, timeout) != std::cv_status::timeout)
+        if (lists_writing_thread_should_exit.wait_for(lock, timeout, [this] { return lists_writing_thread_exit_requested.load(); }))
             return; /// The destructor requires us to exit.
     }
 
@@ -363,6 +364,7 @@ void DiskAccessStorage::stopListsWritingThread()
 {
     if (lists_writing_thread && lists_writing_thread->joinable())
     {
+        lists_writing_thread_exit_requested = true;
         lists_writing_thread_should_exit.notify_one();
         lists_writing_thread->join();
     }

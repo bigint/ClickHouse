@@ -96,6 +96,7 @@ private:
 
     /// Signals `lists_writing_thread` to exit.
     std::condition_variable lists_writing_thread_should_exit;
+    std::atomic_bool lists_writing_thread_exit_requested = false;
 
     bool lists_writing_thread_is_waiting = false;
 
