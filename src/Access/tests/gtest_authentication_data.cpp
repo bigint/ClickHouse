@@ -191,6 +191,15 @@ TEST(AuthenticationData, BcryptRejectsEmbeddedNullBytes)
     EXPECT_FALSE(AuthenticationData::Util::checkPasswordBcrypt(password_with_null, hash));
     EXPECT_TRUE(AuthenticationData::Util::checkPasswordBcrypt(password, hash));
 }
+
+TEST(AuthenticationData, BcryptRejectsPasswordsAboveItsInputLimit)
+{
+    const String password(72, 'a');
+    const auto hash = AuthenticationData::Util::encodeBcrypt(password, 4);
+
+    EXPECT_TRUE(AuthenticationData::Util::checkPasswordBcrypt(password, hash));
+    EXPECT_FALSE(AuthenticationData::Util::checkPasswordBcrypt(password + "b", hash));
+}
 #endif
 
 TEST(Authentication, OneTimePasswordRejectsNonASCIIBytes)

@@ -118,7 +118,7 @@ AuthenticationData::Digest AuthenticationData::Util::encodeBcrypt(std::string_vi
 bool AuthenticationData::Util::checkPasswordBcrypt(std::string_view password [[maybe_unused]], const Digest & password_bcrypt [[maybe_unused]])
 {
 #if USE_BCRYPT
-    if (password.contains('\0'))
+    if (password.size() > 72 || password.contains('\0'))
         return false;
     if (password_bcrypt.empty())
         throw Exception(ErrorCodes::AUTHENTICATION_FAILED, "Internal failure decoding Bcrypt hash");
