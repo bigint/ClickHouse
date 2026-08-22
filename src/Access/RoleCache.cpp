@@ -9,6 +9,8 @@
 #include <Common/Stopwatch.h>
 #include <Common/logger_useful.h>
 
+#include <unordered_set>
+
 
 namespace ProfileEvents
 {
@@ -129,12 +131,17 @@ void RoleCache::ensureSubscribed()
             scope_guard notifications;
 
             std::lock_guard lock{mutex};
+            std::unordered_set<UUID> changed_ids;
             for (const auto & change : changes)
+                changed_ids.emplace(change.id);
+
+            for (const auto & id : changed_ids)
             {
-                if (auto changed_role = change.entity ? typeid_cast<RolePtr>(change.entity) : nullptr)
-                    roleChanged(change.id, changed_role);
+                auto entity = access_control.tryRead(id);
+                if (auto changed_role = entity ? typeid_cast<RolePtr>(entity) : nullptr)
+                    roleChanged(id, changed_role);
                 else
-                    roleRemoved(change.id);
+                    roleRemoved(id);
             }
             collectEnabledRolesIfNeeded(&notifications);
         });
