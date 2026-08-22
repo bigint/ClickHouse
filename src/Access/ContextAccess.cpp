@@ -485,8 +485,20 @@ void ContextAccess::setUser(const UserPtr & user_, scope_guard & obsolete_subscr
 void ContextAccess::setRolesInfo(const std::shared_ptr<const EnabledRolesInfo> & roles_info_) const
 {
     chassert(roles_info_);
+
+    /// A role notification is delivered from a no-throw notifier boundary. Clear every
+    /// previously derived object before rebuilding so a failing settings/profile/policy
+    /// calculation cannot leave the session authorized by the preceding role state.
+    access = nullptr;
+    access_with_implicit = nullptr;
+    enabled_row_policies = nullptr;
+#if CLICKHOUSE_CLOUD
+    enabled_masking_policies = nullptr;
+#endif
+    enabled_quota = nullptr;
+    enabled_settings = nullptr;
+
     roles_info = roles_info_;
-    enabled_quota.reset();
 
     enabled_row_policies = access_control->getEnabledRowPolicies(*params.user_id, roles_info->enabled_roles);
 #if CLICKHOUSE_CLOUD
@@ -502,8 +514,10 @@ void ContextAccess::setRolesInfo(const std::shared_ptr<const EnabledRolesInfo> &
 
 void ContextAccess::calculateAccessRights() const
 {
-    access = std::make_shared<AccessRights>(mixAccessRightsFromUserAndRoles(*user, *roles_info));
-    access_with_implicit = std::make_shared<AccessRights>(addImplicitAccessRights(*access, *access_control));
+    auto new_access = std::make_shared<AccessRights>(mixAccessRightsFromUserAndRoles(*user, *roles_info));
+    auto new_access_with_implicit = std::make_shared<AccessRights>(addImplicitAccessRights(*new_access, *access_control));
+    access = std::move(new_access);
+    access_with_implicit = std::move(new_access_with_implicit);
 
     if (trace_log)
     {

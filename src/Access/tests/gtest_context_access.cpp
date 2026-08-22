@@ -132,3 +132,40 @@ TEST(ContextAccess, FailedUserRefreshClearsStaleAccess)
 
     EXPECT_FALSE(context_access->getAccessRights()->isGranted(AccessType::SELECT));
 }
+
+TEST(ContextAccess, FailedRoleRefreshClearsStaleAccess)
+{
+    AccessControl access_control;
+    auto storage = std::make_shared<MemoryAccessStorage>("memory", access_control.getChangesNotifier(), true);
+    access_control.setStorages({storage});
+
+    auto role = std::make_shared<Role>();
+    role->setName("role");
+    role->access.grant(AccessType::SELECT);
+    const auto role_id = access_control.insert(role);
+
+    auto user = std::make_shared<User>();
+    user->setName("user");
+    user->granted_roles.grant(role_id);
+    user->default_roles = RolesOrUsersSet(role_id);
+    const auto user_id = access_control.insert(user);
+
+    Settings settings;
+    ClientInfo client_info;
+    ContextAccessParams params(user_id, false, true, nullptr, nullptr, settings, "", client_info, {});
+    const auto context_access = access_control.getContextAccess(params);
+    EXPECT_TRUE(context_access->getAccessRights()->isGranted(AccessType::SELECT));
+
+    access_control.update(
+        role_id,
+        [](const AccessEntityPtr & entity, const UUID &)
+        {
+            auto updated_role = std::static_pointer_cast<Role>(entity->clone());
+            auto & invalid_constraint = updated_role->settings.emplace_back();
+            invalid_constraint.setting_name = "max_threads";
+            invalid_constraint.min_value = Field{String{"not-a-number"}};
+            return updated_role;
+        });
+
+    EXPECT_FALSE(context_access->getAccessRights()->isGranted(AccessType::SELECT));
+}
