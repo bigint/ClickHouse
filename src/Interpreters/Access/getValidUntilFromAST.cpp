@@ -1,5 +1,6 @@
 #include <Interpreters/Access/getValidUntilFromAST.h>
 #include <Interpreters/evaluateConstantExpression.h>
+#include <Common/Exception.h>
 #include <IO/parseDateTimeBestEffort.h>
 #include <IO/ReadHelpers.h>
 #include <IO/ReadBufferFromString.h>
@@ -7,6 +8,11 @@
 
 namespace DB
 {
+    namespace ErrorCodes
+    {
+        extern const int BAD_ARGUMENTS;
+    }
+
     time_t getValidUntilFromAST(ASTPtr valid_until, ContextPtr context)
     {
         if (context)
@@ -33,6 +39,11 @@ namespace DB
         }
 
         assertEOF(in);
+
+        if (time == 0)
+            throw Exception(
+                ErrorCodes::BAD_ARGUMENTS,
+                "VALID UNTIL cannot equal the Unix epoch because that value is reserved for 'infinity'");
 
         return time;
     }

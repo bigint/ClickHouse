@@ -56,6 +56,15 @@ TEST(AuthenticationData, ValidUntilRejectsTrailingCharacters)
     EXPECT_THROW(AuthenticationData::fromAST(ast, nullptr, false), Exception);
 }
 
+TEST(AuthenticationData, ValidUntilRejectsUnixEpochSentinel)
+{
+    ASTAuthenticationData ast;
+    ast.type = AuthenticationType::NO_AUTHENTICATION;
+    ast.valid_until = make_intrusive<ASTLiteral>(String{"0"});
+
+    EXPECT_THROW(AuthenticationData::fromAST(ast, nullptr, false), Exception);
+}
+
 TEST(AuthenticationData, EmptyPlaintextPasswordRoundTrips)
 {
     AuthenticationData original{AuthenticationType::PLAINTEXT_PASSWORD};
