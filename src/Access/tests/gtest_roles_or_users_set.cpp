@@ -41,3 +41,22 @@ TEST(RolesOrUsersSet, NamedEntitiesRequireAccessControl)
 
     EXPECT_THROW(RolesOrUsersSet{ast}, Exception);
 }
+
+TEST(RolesOrUsersSet, CopyDependenciesReplacesMembership)
+{
+    const UUID id = UUIDHelpers::generateV4();
+
+    RolesOrUsersSet included{id};
+    RolesOrUsersSet excluded;
+    excluded.except_ids.emplace(id);
+
+    auto destination = excluded;
+    destination.copyDependenciesFrom(included, {id});
+    EXPECT_TRUE(destination.match(id));
+    EXPECT_FALSE(destination.except_ids.contains(id));
+
+    destination = included;
+    destination.copyDependenciesFrom(excluded, {id});
+    EXPECT_FALSE(destination.match(id));
+    EXPECT_FALSE(destination.ids.contains(id));
+}

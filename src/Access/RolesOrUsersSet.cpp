@@ -358,16 +358,18 @@ void RolesOrUsersSet::copyDependenciesFrom(const RolesOrUsersSet & src, const st
     if (all != src.all)
         return;
 
-    for (const auto & id : src.ids)
+    for (const auto & id : dependencies_ids)
     {
-        if (dependencies_ids.contains(id))
+        if (src.ids.contains(id))
+        {
             ids.emplace(id);
-    }
-
-    for (const auto & id : src.except_ids)
-    {
-        if (dependencies_ids.contains(id))
+            except_ids.erase(id);
+        }
+        else if (src.except_ids.contains(id))
+        {
             except_ids.emplace(id);
+            ids.erase(id);
+        }
     }
 }
 
