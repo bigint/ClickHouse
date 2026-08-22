@@ -45,7 +45,10 @@ private:
     void usersWithoutRowPoliciesCanReadRowsChanged();
     /// Takes no lock and reads only `policies` (not `all_policies`), so it can rebuild on a snapshot
     /// off the `mutex`. `const` to keep it from mutating cache state off-lock.
-    void mixFiltersFor(EnabledRowPolicies & enabled, const std::unordered_map<UUID, PolicyInfo> & policies, bool users_without_row_policies_can_read_rows) const;
+    boost::shared_ptr<const EnabledRowPolicies::MixedFiltersMap> calculateMixedFiltersFor(
+        const EnabledRowPolicies & enabled,
+        const std::unordered_map<UUID, PolicyInfo> & policies,
+        bool users_without_row_policies_can_read_rows) const;
 
     const AccessControl & access_control;
     std::unordered_map<UUID, PolicyInfo> all_policies TSA_GUARDED_BY(mutex);

@@ -145,7 +145,8 @@ std::shared_ptr<const EnabledRowPolicies> RowPolicyCache::getEnabledRowPolicies(
 
     auto res = std::shared_ptr<EnabledRowPolicies>(new EnabledRowPolicies(params));
     enabled_row_policies.emplace(std::move(params), res);
-    mixFiltersFor(*res, all_policies, access_control.isEnabledUsersWithoutRowPoliciesCanReadRows());
+    res->mixed_filters.store(
+        calculateMixedFiltersFor(*res, all_policies, access_control.isEnabledUsersWithoutRowPoliciesCanReadRows()));
     return res;
 }
 
@@ -263,12 +264,18 @@ void RowPolicyCache::mixFiltersIfNeeded()
     Stopwatch watch;
     try
     {
+        std::vector<boost::shared_ptr<const EnabledRowPolicies::MixedFiltersMap>> recalculated;
+        recalculated.reserve(targets.size());
         for (const auto & target : targets)
-            mixFiltersFor(*target, policies_snapshot, users_without_row_policies_can_read_rows);
+            recalculated.push_back(calculateMixedFiltersFor(*target, policies_snapshot, users_without_row_policies_can_read_rows));
+
+        for (size_t i = 0; i != targets.size(); ++i)
+            targets[i]->mixed_filters.store(recalculated[i]);
     }
     catch (...)
     {
-        /// Rebuild failed: request a retry on the next batch (some sets may be left stale).
+        /// Rebuild failed: request a retry on the next batch. No newly calculated filters are
+        /// published until the whole batch has been built successfully.
         std::lock_guard lock{mutex};
         need_mix_filters = true;
         throw;
@@ -295,9 +302,12 @@ void RowPolicyCache::usersWithoutRowPoliciesCanReadRowsChanged()
 }
 
 
-void RowPolicyCache::mixFiltersFor(EnabledRowPolicies & enabled, const std::unordered_map<UUID, PolicyInfo> & policies, bool users_without_row_policies_can_read_rows) const
+boost::shared_ptr<const EnabledRowPolicies::MixedFiltersMap> RowPolicyCache::calculateMixedFiltersFor(
+    const EnabledRowPolicies & enabled,
+    const std::unordered_map<UUID, PolicyInfo> & policies,
+    bool users_without_row_policies_can_read_rows) const
 {
-    /// Reads only `policies` and atomically publishes into `enabled`; takes no lock.
+    /// Reads only `policies` and `enabled.params`; takes no lock and does not publish.
 
     using MixedFiltersMap = EnabledRowPolicies::MixedFiltersMap;
     using MixedFiltersKey = EnabledRowPolicies::MixedFiltersKey;
@@ -418,7 +428,7 @@ void RowPolicyCache::mixFiltersFor(EnabledRowPolicies & enabled, const std::unor
         }
     }
 
-    enabled.mixed_filters.store(mixed_filters);
+    return mixed_filters;
 }
 
 }
