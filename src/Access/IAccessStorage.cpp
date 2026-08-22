@@ -57,6 +57,19 @@ namespace
     /// otherwise an inner cascade can update the in-memory state without writing it to
     /// disk, and the outer cascade then sees no work to do.
     thread_local size_t remove_depth = 0;
+
+    std::vector<UUID> removeDuplicateIDs(const std::vector<UUID> & ids)
+    {
+        std::unordered_set<UUID> seen;
+        std::vector<UUID> result;
+        result.reserve(ids.size());
+        for (const auto & id : ids)
+        {
+            if (seen.insert(id).second)
+                result.push_back(id);
+        }
+        return result;
+    }
 }
 
 
@@ -232,7 +245,12 @@ std::vector<UUID> IAccessStorage::insert(const std::vector<AccessEntityPtr> & mu
 
 std::vector<UUID> IAccessStorage::insert(const std::vector<AccessEntityPtr> & multiple_entities, const std::vector<UUID> & ids, bool replace_if_exists, bool throw_if_exists)
 {
-    chassert(ids.empty() || (multiple_entities.size() == ids.size()));
+    if (!ids.empty() && multiple_entities.size() != ids.size())
+        throw Exception(
+            ErrorCodes::LOGICAL_ERROR,
+            "Cannot insert {} access entities with {} IDs",
+            multiple_entities.size(),
+            ids.size());
 
     if (multiple_entities.empty())
         return {};
@@ -339,6 +357,9 @@ std::vector<UUID> IAccessStorage::remove(const std::vector<UUID> & ids, bool thr
 {
     if (ids.empty())
         return {};
+    auto unique_ids = removeDuplicateIDs(ids);
+    if (unique_ids.size() != ids.size())
+        return remove(unique_ids, throw_if_not_exists);
     if (ids.size() == 1)
         return remove(ids[0], throw_if_not_exists) ? ids : std::vector<UUID>{};
 
@@ -565,6 +586,9 @@ std::vector<UUID> IAccessStorage::update(const std::vector<UUID> & ids, const Up
 {
     if (ids.empty())
         return {};
+    auto unique_ids = removeDuplicateIDs(ids);
+    if (unique_ids.size() != ids.size())
+        return update(unique_ids, update_func, throw_if_not_exists);
     if (ids.size() == 1)
         return update(ids[0], update_func, throw_if_not_exists) ? ids : std::vector<UUID>{};
 

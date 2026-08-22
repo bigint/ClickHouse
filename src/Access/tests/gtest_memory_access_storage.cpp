@@ -148,6 +148,43 @@ TEST(MemoryAccessStorage, SetAllWithoutNotificationsSuppressesRemovals)
     EXPECT_EQ(delivered_changes, 0u);
 }
 
+TEST(IAccessStorage, BatchInsertRejectsMismatchedIDs)
+{
+    AccessChangesNotifier notifier;
+    MemoryAccessStorage storage("memory", notifier, true);
+
+    EXPECT_THROW(
+        storage.insert(
+            {makeEntity<User>("first"), makeEntity<User>("second")},
+            {UUIDHelpers::generateV4()},
+            false,
+            true),
+        Exception);
+    EXPECT_TRUE(storage.findAll<User>().empty());
+}
+
+TEST(IAccessStorage, BatchMutationProcessesDuplicateIDOnce)
+{
+    AccessChangesNotifier notifier;
+    MemoryAccessStorage storage("memory", notifier, true);
+    const auto id = storage.insert(makeEntity<User>("user"));
+
+    size_t update_calls = 0;
+    EXPECT_EQ(
+        storage.update(
+            {id, id},
+            [&](const AccessEntityPtr & entity, const UUID &)
+            {
+                ++update_calls;
+                return entity;
+            }),
+        std::vector<UUID>{id});
+    EXPECT_EQ(update_calls, 1u);
+
+    EXPECT_EQ(storage.remove({id, id}), std::vector<UUID>{id});
+    EXPECT_FALSE(storage.exists(id));
+}
+
 TEST(IAccessStorage, BatchRemovalCleansDependenciesAfterStandardException)
 {
     AccessChangesNotifier notifier;
