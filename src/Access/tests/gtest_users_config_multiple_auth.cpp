@@ -210,6 +210,46 @@ TEST(UsersConfigAccessStorage, InvalidDirectConfigPreservesFileReloader)
     EXPECT_TRUE(storage.find<User>("replacement_user").has_value());
 }
 
+TEST(UsersConfigAccessStorage, InvalidFileReplacementPreservesFileReloader)
+{
+    Poco::TemporaryFile temp_dir;
+    temp_dir.createDirectories();
+    const String config_path = temp_dir.path() + "/users.xml";
+    const String invalid_config_path = temp_dir.path() + "/invalid-users.xml";
+
+    std::ofstream{config_path} << R"(
+        <clickhouse>
+            <users>
+                <initial_user><no_password/></initial_user>
+            </users>
+        </clickhouse>
+    )";
+    std::ofstream{invalid_config_path} << R"(
+        <clickhouse>
+            <max_threads>1</max_threads>
+        </clickhouse>
+    )";
+
+    AccessControl access_control;
+    UsersConfigAccessStorage storage("users_config_test", access_control, false);
+    storage.load(config_path, "", temp_dir.path(), [] { return zkutil::ZooKeeperPtr{}; });
+
+    EXPECT_THROW(storage.load(invalid_config_path, "", temp_dir.path(), [] { return zkutil::ZooKeeperPtr{}; }), Exception);
+    EXPECT_EQ(config_path, storage.getPath());
+
+    std::ofstream{config_path} << R"(
+        <clickhouse>
+            <users>
+                <replacement_user><no_password/></replacement_user>
+            </users>
+        </clickhouse>
+    )";
+    storage.reload(IAccessStorage::ReloadMode::ALL);
+
+    EXPECT_FALSE(storage.find<User>("initial_user").has_value());
+    EXPECT_TRUE(storage.find<User>("replacement_user").has_value());
+}
+
 TEST_F(UsersConfigMultipleAuthTest, FlatNoPassword)
 {
     const std::string xml_config = R"(

@@ -109,26 +109,38 @@ void UsersConfigAccessStorage::load(
     const String & preprocessed_dir,
     const zkutil::GetZooKeeper & get_zookeeper_function)
 {
+    auto zk_node_cache = std::make_unique<zkutil::ZooKeeperNodeCache>(get_zookeeper_function);
+    using Entities = std::vector<std::pair<UUID, AccessEntityPtr>>;
+    auto initial_entities = std::make_shared<std::optional<Entities>>();
+    auto new_config_reloader = std::make_unique<ConfigReloader>(
+        users_config_path,
+        std::vector{{include_from_path}},
+        preprocessed_dir,
+        std::move(zk_node_cache),
+        std::make_shared<Poco::Event>(),
+        [this, users_config_path, initial_entities](Poco::AutoPtr<Poco::Util::AbstractConfiguration> new_config, bool initial_loading)
+        {
+            Settings::checkNoSettingNamesAtTopLevel(*new_config, users_config_path);
+            auto all_entities = parseFromConfig(*new_config, users_config_path);
+            if (initial_loading)
+            {
+                initial_entities->emplace(std::move(all_entities));
+                return;
+            }
+
+            memory_storage.setAll(all_entities);
+            access_control.getChangesNotifier().sendNotifications();
+        });
+
     std::lock_guard reconfiguration_lock{reconfiguration_mutex};
     auto config_reloader_to_stop = std::move(config_reloader);
     config_reloader_to_stop.reset();
 
     std::lock_guard lock{load_mutex};
     path = std::filesystem::path{users_config_path}.lexically_normal();
-    auto zk_node_cache = std::make_unique<zkutil::ZooKeeperNodeCache>(get_zookeeper_function);
-    config_reloader = std::make_unique<ConfigReloader>(
-        users_config_path,
-        std::vector{{include_from_path}},
-        preprocessed_dir,
-        std::move(zk_node_cache),
-        std::make_shared<Poco::Event>(),
-        [this, users_config_path](Poco::AutoPtr<Poco::Util::AbstractConfiguration> new_config, bool initial_loading)
-        {
-            Settings::checkNoSettingNamesAtTopLevel(*new_config, users_config_path);
-            memory_storage.setAll(parseFromConfig(*new_config, users_config_path));
-            if (!initial_loading)
-                access_control.getChangesNotifier().sendNotifications();
-        });
+    memory_storage.setAll(initial_entities->value());
+    initial_entities->reset();
+    config_reloader = std::move(new_config_reloader);
 }
 
 void UsersConfigAccessStorage::startPeriodicReloading()
