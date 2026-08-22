@@ -456,6 +456,7 @@ void ContextAccess::setRolesInfo(const std::shared_ptr<const EnabledRolesInfo> &
 {
     chassert(roles_info_);
     roles_info = roles_info_;
+    enabled_quota.reset();
 
     enabled_row_policies = access_control->getEnabledRowPolicies(*params.user_id, roles_info->enabled_roles);
 #if CLICKHOUSE_CLOUD
