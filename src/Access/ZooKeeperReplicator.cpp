@@ -126,7 +126,14 @@ void ZooKeeperReplicator::stopWatchingThread()
     if (!watching.exchange(false))
         return;
 
-    [[maybe_unused]] bool push_result = watched_queue->push(UUIDHelpers::Nil);
+    try
+    {
+        [[maybe_unused]] bool push_result = watched_queue->push(UUIDHelpers::Nil);
+    }
+    catch (...)
+    {
+        tryLogCurrentException(&Poco::Logger::get(storage_name), "Could not wake replicated access watching thread");
+    }
     watching_stopped.notify_all();
     if (watching_thread && watching_thread->joinable())
         watching_thread->join();
