@@ -10,9 +10,14 @@ namespace DB
 
 AccessChangesNotifier::AccessChangesNotifier() : handlers(std::make_shared<Handlers>())
 {
+    handlers->notifier = this;
 }
 
-AccessChangesNotifier::~AccessChangesNotifier() = default;
+AccessChangesNotifier::~AccessChangesNotifier()
+{
+    std::lock_guard lock{handlers->delivery_mutex};
+    handlers->notifier = nullptr;
+}
 
 void AccessChangesNotifier::onEntityAdded(const UUID & id, const AccessEntityPtr & new_entity)
 {
@@ -94,16 +99,17 @@ scope_guard AccessChangesNotifier::subscribeForChanges(const std::vector<UUID> &
 scope_guard AccessChangesNotifier::deferNotifications()
 {
     std::lock_guard lock{handlers->delivery_mutex};
-    ++notification_deferral_depth;
-    return [this, my_handlers = handlers]
+    ++handlers->notification_deferral_depth;
+    return [my_handlers = handlers]
     {
         std::lock_guard lock2{my_handlers->delivery_mutex};
-        chassert(notification_deferral_depth != 0);
-        if (--notification_deferral_depth != 0 || !notification_pending)
+        chassert(my_handlers->notification_deferral_depth != 0);
+        if (--my_handlers->notification_deferral_depth != 0 || !my_handlers->notification_pending)
             return;
 
-        notification_pending = false;
-        sendNotifications();
+        my_handlers->notification_pending = false;
+        if (my_handlers->notifier)
+            my_handlers->notifier->sendNotifications();
     };
 }
 
@@ -111,15 +117,15 @@ void AccessChangesNotifier::sendNotifications()
 {
     /// Only one thread can send notifications at any time.
     std::lock_guard delivery_lock{handlers->delivery_mutex};
-    if (notification_deferral_depth != 0)
+    if (handlers->notification_deferral_depth != 0)
     {
-        notification_pending = true;
+        handlers->notification_pending = true;
         return;
     }
-    if (sending_notifications_in_progress)
+    if (handlers->sending_notifications_in_progress)
         return;
-    sending_notifications_in_progress = true;
-    SCOPE_EXIT({ sending_notifications_in_progress = false; });
+    handlers->sending_notifications_in_progress = true;
+    SCOPE_EXIT({ handlers->sending_notifications_in_progress = false; });
 
     /// Deliver in batches until the queue is empty.
     ///

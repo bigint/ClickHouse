@@ -214,6 +214,19 @@ TEST(AccessChangesNotifier, DeferralDelaysConcurrentSend)
     EXPECT_EQ(delivered_changes, 1u);
 }
 
+TEST(AccessChangesNotifier, DeferralCanOutliveNotifier)
+{
+    scope_guard deferral;
+    {
+        AccessChangesNotifier notifier;
+        deferral = notifier.deferNotifications();
+        notifier.onEntityRemoved(UUIDHelpers::generateV4(), AccessEntityType::ROLE);
+        notifier.sendNotifications();
+    }
+
+    EXPECT_NO_THROW(deferral.reset());
+}
+
 TEST(AccessChangesNotifier, UnsubscribeWaitsForInFlightHandler)
 {
     AccessChangesNotifier notifier;

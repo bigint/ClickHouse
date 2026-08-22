@@ -73,6 +73,10 @@ private:
         std::list<OnChangedHandler> by_type[static_cast<size_t>(AccessEntityType::MAX)];
         std::mutex mutex;
         std::recursive_mutex delivery_mutex;
+        AccessChangesNotifier * notifier = nullptr; /// guarded by `delivery_mutex`
+        bool sending_notifications_in_progress = false; /// guarded by `delivery_mutex`
+        size_t notification_deferral_depth = 0; /// guarded by `delivery_mutex`
+        bool notification_pending = false; /// guarded by `delivery_mutex`
     };
 
     /// shared_ptr is here for safety because AccessChangesNotifier can be destroyed before all subscriptions are removed.
@@ -80,9 +84,6 @@ private:
 
     std::vector<Change> queue;
     std::mutex queue_mutex;
-    bool sending_notifications_in_progress = false; /// guarded by `Handlers::delivery_mutex`
-    size_t notification_deferral_depth = 0; /// guarded by `Handlers::delivery_mutex`
-    bool notification_pending = false; /// guarded by `Handlers::delivery_mutex`
 };
 
 }
