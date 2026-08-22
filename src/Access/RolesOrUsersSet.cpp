@@ -381,7 +381,7 @@ void RolesOrUsersSet::removeDependencies(const std::unordered_set<UUID> & depend
     for (auto it = except_ids.begin(); it != except_ids.end();)
     {
         if (dependencies_ids.contains(*it))
-            except_ids.erase(it);
+            it = except_ids.erase(it);
         else
             ++it;
     }
