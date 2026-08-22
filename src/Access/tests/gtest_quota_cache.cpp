@@ -6,6 +6,7 @@
 #include <Access/MemoryAccessStorage.h>
 #include <Access/Quota.h>
 #include <Access/QuotaUsage.h>
+#include <Access/User.h>
 #include <Core/UUID.h>
 #include <Common/Exception.h>
 
@@ -212,6 +213,45 @@ TEST(QuotaCache, ForwardedPrefixRejectsMalformedAddress)
             "not-an-ip",
             ""),
         Exception);
+}
+
+TEST(QuotaCache, PreservesClientKeyPolicyAcrossCacheAndReload)
+{
+    AccessControl access_control;
+    auto storage = std::make_shared<MemoryAccessStorage>("memory", access_control.getChangesNotifier(), true);
+    access_control.setStorages({storage});
+
+    auto quota = std::make_shared<Quota>();
+    quota->setName("client_key_quota");
+    quota->key_type = QuotaKeyType::CLIENT_KEY;
+    quota->to_roles = RolesOrUsersSet::AllTag{};
+    auto & limits = quota->all_limits.emplace_back();
+    limits.duration = std::chrono::minutes(1);
+    limits.max[static_cast<size_t>(QuotaType::QUERIES)] = 1;
+    const auto quota_id = access_control.insert(quota);
+
+    auto user = std::make_shared<User>();
+    user->setName("user");
+    const auto user_id = access_control.insert(user);
+    const auto address = std::make_shared<Poco::Net::IPAddress>("127.0.0.1");
+    auto authentication_quota = access_control.getAuthenticationQuota("user", *address, "");
+    ASSERT_NE(authentication_quota, nullptr);
+
+    /// A strict query lookup must not reuse the lenient authentication cache entry.
+    EXPECT_THROW(access_control.getEnabledQuota(user_id, "user", {}, address, "", ""), Exception);
+
+    /// Updating the quota must preserve the lenient policy of the live authentication entry.
+    access_control.update(
+        quota_id,
+        [](const AccessEntityPtr & entity, const UUID &)
+        {
+            auto updated_quota = std::static_pointer_cast<Quota>(entity->clone());
+            updated_quota->setName("renamed_client_key_quota");
+            return updated_quota;
+        });
+
+    ASSERT_EQ(authentication_quota->getAllUsage().size(), 1u);
+    EXPECT_EQ(authentication_quota->getAllUsage().front().quota_name, "renamed_client_key_quota");
 }
 
 TEST(QuotaCache, QuotaChangesResolveCompositeOwner)

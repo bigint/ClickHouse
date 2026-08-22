@@ -63,7 +63,7 @@ private:
         QuotaInfo(const QuotaPtr & quota_, const UUID & quota_id_);
         void setQuota(const QuotaPtr & quota_, const UUID & quota_id_);
 
-        String calculateKey(const EnabledQuota & enabled_quota, bool throw_if_client_key_empty) const;
+        String calculateKey(const EnabledQuota & enabled_quota) const;
 
         QuotaPtr quota;
         UUID quota_id;
@@ -76,7 +76,7 @@ private:
     void quotaRemoved(const UUID & quota_id) TSA_REQUIRES(mutex);
     void chooseQuotaToConsumeIfNeeded() TSA_REQUIRES(mutex);
     void chooseQuotaToConsume() TSA_REQUIRES(mutex);
-    void chooseQuotaToConsumeFor(EnabledQuota & enabled_quota, bool throw_if_client_key_empty) TSA_REQUIRES(mutex);
+    void chooseQuotaToConsumeFor(EnabledQuota & enabled_quota) TSA_REQUIRES(mutex);
 
     const AccessControl & access_control;
     mutable std::mutex mutex;

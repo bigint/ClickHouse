@@ -35,8 +35,19 @@ public:
         Poco::Net::IPAddress client_address;
         String forwarded_address;
         String client_key;
+        bool throw_if_client_key_empty = true;
 
-        auto toTuple() const { return std::tie(user_id, enabled_roles, user_name, client_address, forwarded_address, client_key); }
+        auto toTuple() const
+        {
+            return std::tie(
+                user_id,
+                enabled_roles,
+                user_name,
+                client_address,
+                forwarded_address,
+                client_key,
+                throw_if_client_key_empty);
+        }
         friend bool operator ==(const Params & lhs, const Params & rhs) { return lhs.toTuple() == rhs.toTuple(); }
         friend bool operator !=(const Params & lhs, const Params & rhs) { return !(lhs == rhs); }
         friend bool operator <(const Params & lhs, const Params & rhs) { return lhs.toTuple() < rhs.toTuple(); }
