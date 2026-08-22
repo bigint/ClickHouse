@@ -560,6 +560,13 @@ LDAPClient::SearchResults LDAPClient::search(const SearchParams & search_params)
 
                 handleError(ldap_parse_result(handle, msg, &rc, &matched_msg, &error_msg, nullptr, nullptr, 0));
 
+                SCOPE_EXIT({
+                    if (matched_msg)
+                        ldap_memfree(matched_msg);
+                    if (error_msg)
+                        ldap_memfree(error_msg);
+                });
+
                 if (rc != LDAP_SUCCESS)
                 {
                     String message;
