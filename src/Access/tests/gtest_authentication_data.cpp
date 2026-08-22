@@ -154,6 +154,24 @@ TEST(Authentication, OneTimePasswordRejectsNonASCIIBytes)
 }
 
 #if USE_SSL
+TEST(AuthenticationData, EmptySSLCertificateSubjectsAreRejected)
+{
+    AuthenticationData authentication_data{AuthenticationType::SSL_CERTIFICATE};
+    EXPECT_THROW(
+        authentication_data.addSSLCertificateSubject(X509Certificate::Subjects::Type::CN, ""),
+        Exception);
+
+    X509Certificate::Subjects subjects;
+    subjects.insert(X509Certificate::Subjects::Type::SAN, "");
+    EXPECT_THROW(authentication_data.setSSLCertificateSubjects(std::move(subjects)), Exception);
+
+    ASTAuthenticationData ast;
+    ast.type = AuthenticationType::SSL_CERTIFICATE;
+    ast.ssl_cert_subject_type = "CN";
+    ast.children.push_back(make_intrusive<ASTLiteral>(String{}));
+    EXPECT_THROW(AuthenticationData::fromAST(ast, nullptr, false), Exception);
+}
+
 TEST(Authentication, ScramCredentialsRejectOtherAuthenticationTypes)
 {
     const std::string auth_message = "auth-message";

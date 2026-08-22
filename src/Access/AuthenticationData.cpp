@@ -379,11 +379,22 @@ void AuthenticationData::setSSLCertificateSubjects(X509Certificate::Subjects && 
 {
     if (ssl_certificate_subjects_.empty())
         throw Exception(ErrorCodes::BAD_ARGUMENTS, "The 'SSL CERTIFICATE' authentication type requires a non-empty list of subjects.");
+
+    for (auto type : {X509Certificate::Subjects::Type::CN, X509Certificate::Subjects::Type::SAN})
+    {
+        for (const auto & subject : ssl_certificate_subjects_.at(type))
+        {
+            if (subject.empty())
+                throw Exception(ErrorCodes::BAD_ARGUMENTS, "An SSL certificate subject cannot be empty");
+        }
+    }
     ssl_certificate_subjects = std::move(ssl_certificate_subjects_);
 }
 
 void AuthenticationData::addSSLCertificateSubject(X509Certificate::Subjects::Type type_, String && subject_)
 {
+    if (subject_.empty())
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "An SSL certificate subject cannot be empty");
     ssl_certificate_subjects.insert(type_, std::move(subject_));
 }
 #endif
