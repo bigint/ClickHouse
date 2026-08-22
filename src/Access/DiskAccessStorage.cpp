@@ -467,6 +467,17 @@ void DiskAccessStorage::reloadAllAndRebuildLists()
             /// Such duplicates can appear after `insertNoLock` crashes between renaming the new
             /// `<id>.tmp` and deleting `<old_id>.sql`.
             /// Here we keep the newer file by mtime and remove the older file.
+            if (mtime == it->second.mtime)
+            {
+                throw Exception(
+                    ErrorCodes::CORRUPTED_DATA,
+                    "Duplicate {} {} on disk has equal modification times in {} and {}; cannot determine the newer entity",
+                    AccessEntityTypeInfo::get(entity->getType()).name,
+                    entity->getName(),
+                    it->second.path.string(),
+                    path.string());
+            }
+
             if (mtime > it->second.mtime)
             {
                 LOG_WARNING(getLogger(), "Duplicate {} {} on disk; keeping newer file {}, removing older {}",

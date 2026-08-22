@@ -119,6 +119,32 @@ TEST(DiskAccessStorageRecovery, RebuildRemovesOlderDuplicates)
     EXPECT_EQ(*resolved, id_b);
 }
 
+TEST(DiskAccessStorageRecovery, RebuildRejectsDuplicatesWithEqualModificationTimes)
+{
+    Poco::TemporaryFile temp_dir;
+    temp_dir.createDirectories();
+    String dir = temp_dir.path() + "/";
+
+    auto user = std::make_shared<User>();
+    user->setName("alice");
+    auto path_a = std::filesystem::path(dir) / (toString(UUIDHelpers::generateV4()) + ".sql");
+    auto path_b = std::filesystem::path(dir) / (toString(UUIDHelpers::generateV4()) + ".sql");
+    writeEntityToFile(path_a, *user);
+    writeEntityToFile(path_b, *user);
+
+    const auto common_mtime = std::filesystem::file_time_type::clock::now();
+    std::filesystem::last_write_time(path_a, common_mtime);
+    std::filesystem::last_write_time(path_b, common_mtime);
+    writeNeedRebuildMarker(dir);
+
+    AccessChangesNotifier notifier;
+    EXPECT_THROW(
+        DiskAccessStorage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false),
+        Exception);
+    EXPECT_TRUE(std::filesystem::exists(path_a));
+    EXPECT_TRUE(std::filesystem::exists(path_b));
+}
+
 TEST(DiskAccessStorageRecovery, RebuildsListWithTrailingGarbage)
 {
     Poco::TemporaryFile temp_dir;
