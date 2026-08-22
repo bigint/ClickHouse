@@ -682,7 +682,7 @@ void AccessControl::setCustomSettingsPrefixes(const Strings & prefixes)
 void AccessControl::setCustomSettingsPrefixes(const String & comma_separated_prefixes)
 {
     Strings prefixes;
-    splitInto<','>(prefixes, comma_separated_prefixes);
+    splitInto<','>(prefixes, comma_separated_prefixes, /* token_compress= */ true);
     setCustomSettingsPrefixes(prefixes);
 }
 
