@@ -493,9 +493,10 @@ void SettingsProfileElements::applyChanges(const AlterSettingsProfileElements & 
 
     auto apply_drop_setting = [&](const String & setting_name)
     {
+        const auto resolved_setting_name = resolveSettingName(setting_name);
         for (auto & element : *this)
         {
-            if (element.setting_name == setting_name)
+            if (!element.setting_name.empty() && resolveSettingName(element.setting_name) == resolved_setting_name)
                 element.setting_name.clear();
         }
     };

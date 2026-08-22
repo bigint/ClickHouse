@@ -97,6 +97,31 @@ TEST(SettingsProfileElement, NormalizeMergesSettingAliases)
     EXPECT_EQ(elements.front().max_value, Field{true});
 }
 
+TEST(SettingsProfileElement, ApplyChangesMatchesSettingAliases)
+{
+    SettingsProfileElements elements;
+    auto & original = elements.emplace_back();
+    original.setting_name = "allow_experimental_analyzer";
+    original.value = Field{false};
+    original.min_value = Field{false};
+
+    AlterSettingsProfileElements add_changes;
+    auto & replacement = add_changes.add_settings.emplace_back();
+    replacement.setting_name = "enable_analyzer";
+    replacement.value = Field{true};
+    elements.applyChanges(add_changes);
+
+    ASSERT_EQ(elements.size(), 1);
+    EXPECT_EQ(elements.front().setting_name, "allow_experimental_analyzer");
+    EXPECT_EQ(elements.front().value, Field{true});
+    EXPECT_FALSE(elements.front().min_value.has_value());
+
+    AlterSettingsProfileElements drop_changes;
+    drop_changes.drop_settings.emplace_back().setting_name = "enable_analyzer";
+    elements.applyChanges(drop_changes);
+    EXPECT_TRUE(elements.empty());
+}
+
 TEST(SettingsProfileElement, NamedParentRequiresAccessControl)
 {
     ASTSettingsProfileElement ast;
