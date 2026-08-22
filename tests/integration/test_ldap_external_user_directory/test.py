@@ -98,6 +98,15 @@ def test_authentication_pass():
         "SELECT currentUser()", user="janedoe", password="qwerty"
     ) == TSV([["janedoe"]])
 
+    instance1.query("SYSTEM FLUSH LOGS session_log", user="common_user", password="qwerty")
+    assert instance1.query(
+        "SELECT external_auth_server FROM system.session_log "
+        "WHERE type = 'LoginSuccess' AND user = 'janedoe' "
+        "ORDER BY event_time_microseconds DESC LIMIT 1",
+        user="common_user",
+        password="qwerty",
+    ) == TSV([["openldap"]])
+
 
 def test_authentication_fail():
     # User doesn't exist.

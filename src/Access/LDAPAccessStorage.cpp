@@ -501,7 +501,11 @@ std::optional<AuthResult> LDAPAccessStorage::authenticateImpl(
     }
 
     if (id)
-        return AuthResult{ .user_id = *id, .authentication_data = AuthenticationData(AuthenticationType::LDAP), .user_name = credentials.getUserName() };
+    {
+        AuthenticationData authentication_data(AuthenticationType::LDAP);
+        authentication_data.setLDAPServerName(ldap_server_name);
+        return AuthResult{ .user_id = *id, .authentication_data = std::move(authentication_data), .user_name = credentials.getUserName() };
+    }
     return std::nullopt;
 }
 
