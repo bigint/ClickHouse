@@ -26,3 +26,14 @@ TEST(AuthenticationData, OneTimePasswordParticipatesInEquality)
 
     EXPECT_NE(first, second);
 }
+
+TEST(AuthenticationData, NoAuthenticationRoundTripPreservesValidUntil)
+{
+    AuthenticationData original{AuthenticationType::NO_AUTHENTICATION};
+    original.setValidUntil(1'800'000'000);
+
+    const auto ast = original.toAST();
+    const auto restored = AuthenticationData::fromAST(*ast, nullptr, false);
+
+    EXPECT_EQ(restored.getValidUntil(), original.getValidUntil());
+}
