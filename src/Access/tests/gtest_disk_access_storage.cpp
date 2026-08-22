@@ -135,7 +135,7 @@ TEST(DiskAccessStorageRecovery, RebuildRejectsDuplicatesWithEqualModificationTim
     const auto common_mtime = std::filesystem::file_time_type::clock::now();
     std::filesystem::last_write_time(path_a, common_mtime);
     std::filesystem::last_write_time(path_b, common_mtime);
-    writeNeedRebuildMarker(dir);
+    EXPECT_FALSE(std::filesystem::exists(std::filesystem::path(dir) / "need_rebuild_lists.mark"));
 
     AccessChangesNotifier notifier;
     EXPECT_THROW(
@@ -143,6 +143,7 @@ TEST(DiskAccessStorageRecovery, RebuildRejectsDuplicatesWithEqualModificationTim
         Exception);
     EXPECT_TRUE(std::filesystem::exists(path_a));
     EXPECT_TRUE(std::filesystem::exists(path_b));
+    EXPECT_TRUE(std::filesystem::exists(std::filesystem::path(dir) / "need_rebuild_lists.mark"));
 }
 
 TEST(DiskAccessStorageRecovery, RebuildsListWithTrailingGarbage)

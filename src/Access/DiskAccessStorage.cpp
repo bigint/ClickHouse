@@ -413,6 +413,11 @@ void DiskAccessStorage::stopListsWritingThread()
 /// and then saves the files "users.list", "roles.list", etc. to the same directory.
 void DiskAccessStorage::reloadAllAndRebuildLists()
 {
+    /// A rebuild can be triggered by a missing or corrupt list even when no marker exists.
+    /// Persist the marker before reading entity files so a failure or process termination
+    /// cannot leave a partially rewritten set of lists that the next startup trusts.
+    createNeedRebuildListsMark(directory_path);
+
     struct LoadedEntity
     {
         UUID id;
