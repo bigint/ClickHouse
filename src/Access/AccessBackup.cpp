@@ -354,10 +354,50 @@ void AccessRestorerFromBackup::loadFromBackup()
                     continue;
                 }
 
-                std::unordered_set<UUID> dependencies_to_copy;
+                std::unordered_set<UUID> incoming_dependencies;
                 for (const auto & dependency_id : entity->findDependencies())
-                    dependencies_to_copy.emplace(dependency_id);
+                    incoming_dependencies.emplace(dependency_id);
+
+                std::unordered_set<UUID> existing_dependencies;
                 for (const auto & dependency_id : entity_info.entity->findDependencies())
+                    existing_dependencies.emplace(dependency_id);
+
+                std::unordered_set<UUID> overlapping_dependencies;
+                for (const auto & dependency_id : incoming_dependencies)
+                {
+                    if (existing_dependencies.contains(dependency_id))
+                        overlapping_dependencies.emplace(dependency_id);
+                }
+
+                if (!overlapping_dependencies.empty())
+                {
+                    auto keep_only_dependencies = [](const AccessEntityPtr & source, const std::unordered_set<UUID> & ids_to_keep)
+                    {
+                        auto result = source->clone();
+                        std::unordered_set<UUID> ids_to_remove;
+                        for (const auto & dependency_id : source->findDependencies())
+                        {
+                            if (!ids_to_keep.contains(dependency_id))
+                                ids_to_remove.emplace(dependency_id);
+                        }
+                        result->removeDependencies(ids_to_remove);
+                        return result;
+                    };
+
+                    auto existing_overlap = keep_only_dependencies(entity_info.entity, overlapping_dependencies);
+                    auto incoming_overlap = keep_only_dependencies(entity, overlapping_dependencies);
+                    if (*existing_overlap != *incoming_overlap)
+                    {
+                        throw Exception(
+                            ErrorCodes::CANNOT_RESTORE_TABLE,
+                            "Conflicting dependent definitions for UUID {} while reading {}",
+                            id,
+                            filepath_in_backup);
+                    }
+                }
+
+                std::unordered_set<UUID> dependencies_to_copy = std::move(incoming_dependencies);
+                for (const auto & dependency_id : existing_dependencies)
                     dependencies_to_copy.erase(dependency_id);
 
                 if (!dependencies_to_copy.empty())
