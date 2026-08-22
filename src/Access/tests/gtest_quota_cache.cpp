@@ -213,3 +213,44 @@ TEST(QuotaCache, ForwardedPrefixRejectsMalformedAddress)
             ""),
         Exception);
 }
+
+TEST(QuotaCache, QuotaChangesResolveCompositeOwner)
+{
+    AccessControl access_control;
+    auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", access_control.getChangesNotifier(), true);
+    auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", access_control.getChangesNotifier(), true);
+    const auto quota_id = UUIDHelpers::generateV4();
+
+    auto make_quota = [](const String & name)
+    {
+        auto quota = std::make_shared<Quota>();
+        quota->setName(name);
+        quota->key_type = QuotaKeyType::USER_NAME;
+        quota->to_roles = RolesOrUsersSet::AllTag{};
+        auto & limits = quota->all_limits.emplace_back();
+        limits.duration = std::chrono::minutes(1);
+        limits.max[static_cast<size_t>(QuotaType::QUERIES)] = 100;
+        return quota;
+    };
+
+    higher_priority_storage->insert(quota_id, make_quota("higher_priority"), false, true);
+    lower_priority_storage->insert(quota_id, make_quota("lower_priority"), false, true);
+    access_control.setStorages({higher_priority_storage, lower_priority_storage});
+
+    auto enabled_quota = access_control.getEnabledQuota(
+        UUIDHelpers::generateV4(), "user", {}, std::make_shared<Poco::Net::IPAddress>("127.0.0.1"), "", "");
+    ASSERT_EQ(enabled_quota->getAllUsage().size(), 1u);
+    EXPECT_EQ(enabled_quota->getAllUsage().front().quota_name, "higher_priority");
+
+    lower_priority_storage->update(
+        quota_id,
+        [](const AccessEntityPtr & entity, const UUID &)
+        {
+            auto updated = std::static_pointer_cast<Quota>(entity->clone());
+            updated->setName("lower_priority_updated");
+            return updated;
+        });
+    access_control.getChangesNotifier().sendNotifications();
+    ASSERT_EQ(enabled_quota->getAllUsage().size(), 1u);
+    EXPECT_EQ(enabled_quota->getAllUsage().front().quota_name, "higher_priority");
+}

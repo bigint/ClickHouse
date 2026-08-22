@@ -8,6 +8,8 @@
 #include <Common/ProfileEvents.h>
 #include <Common/Stopwatch.h>
 #include <Common/logger_useful.h>
+
+#include <unordered_set>
 #include <base/range.h>
 #include <boost/range/adaptor/map.hpp>
 #include <boost/range/algorithm/copy.hpp>
@@ -341,12 +343,17 @@ void QuotaCache::ensureAllQuotasRead()
         [this](const std::vector<AccessChangesNotifier::Change> & changes)
         {
             std::lock_guard lock{mutex};
+            std::unordered_set<UUID> changed_ids;
             for (const auto & change : changes)
+                changed_ids.emplace(change.id);
+
+            for (const auto & id : changed_ids)
             {
-                if (change.entity)
-                    quotaAddedOrChanged(change.id, typeid_cast<QuotaPtr>(change.entity));
+                auto entity = access_control.tryRead(id);
+                if (auto quota = entity ? typeid_cast<QuotaPtr>(entity) : nullptr)
+                    quotaAddedOrChanged(id, quota);
                 else
-                    quotaRemoved(change.id);
+                    quotaRemoved(id);
             }
             chooseQuotaToConsumeIfNeeded();
         });
