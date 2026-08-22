@@ -27,6 +27,15 @@ namespace ErrorCodes
 namespace
 {
 
+String getExternalAuthenticatorNameFromConfigKey(String config_key)
+{
+    const auto bracket_pos = config_key.find('[');
+    if (bracket_pos != String::npos)
+        config_key.resize(bracket_pos);
+    Poco::replaceInPlace(config_key, "\\.", ".");
+    return config_key;
+}
+
 void parseLDAPSearchParams(LDAPClient::SearchParams & params, const Poco::Util::AbstractConfiguration & config, const String & prefix)
 {
     const bool has_base_dn = config.has(prefix + ".base_dn");
@@ -366,12 +375,15 @@ void ExternalAuthenticators::setConfiguration(const Poco::Util::AbstractConfigur
     std::unordered_map<String, HTTPAuthClientParams> new_http_auth_servers;
     Poco::Util::AbstractConfiguration::Keys http_auth_server_names;
     config.keys(http_auth_servers_config, http_auth_server_names);
-    for (const auto & http_auth_server_name : http_auth_server_names)
+    for (const auto & http_auth_server_config_name : http_auth_server_names)
     {
-        String prefix = fmt::format("{}.{}", http_auth_servers_config, http_auth_server_name);
+        const String http_auth_server_name = getExternalAuthenticatorNameFromConfigKey(http_auth_server_config_name);
+        String prefix = fmt::format("{}.{}", http_auth_servers_config, http_auth_server_config_name);
         try
         {
-            new_http_auth_servers[http_auth_server_name] = parseHTTPAuthParams(config, prefix);
+            auto [_, inserted] = new_http_auth_servers.emplace(http_auth_server_name, parseHTTPAuthParams(config, prefix));
+            if (!inserted)
+                throw Exception(ErrorCodes::BAD_ARGUMENTS, "Multiple HTTP authentication servers with the same name are not allowed");
         }
         catch (...)
         {
@@ -382,20 +394,21 @@ void ExternalAuthenticators::setConfiguration(const Poco::Util::AbstractConfigur
     LDAPParams new_ldap_client_params_blueprint;
     Poco::Util::AbstractConfiguration::Keys ldap_server_names;
     config.keys("ldap_servers", ldap_server_names);
-    for (auto ldap_server_name : ldap_server_names)
+    for (auto ldap_server_config_name : ldap_server_names)
     {
+        const String ldap_server_name = getExternalAuthenticatorNameFromConfigKey(ldap_server_config_name);
         try
         {
-            const auto bracket_pos = ldap_server_name.find('[');
+            const auto bracket_pos = ldap_server_config_name.find('[');
             if (bracket_pos != std::string::npos)
-                ldap_server_name.resize(bracket_pos);
+                ldap_server_config_name.resize(bracket_pos);
 
             if (new_ldap_client_params_blueprint.contains(ldap_server_name))
                 throw Exception(ErrorCodes::BAD_ARGUMENTS, "Multiple LDAP servers with the same name are not allowed");
 
             LDAPClient::Params ldap_client_params_tmp;
-            parseLDAPServer(ldap_client_params_tmp, config, ldap_server_name);
-            new_ldap_client_params_blueprint.emplace(std::move(ldap_server_name), std::move(ldap_client_params_tmp));
+            parseLDAPServer(ldap_client_params_tmp, config, ldap_server_config_name);
+            new_ldap_client_params_blueprint.emplace(ldap_server_name, std::move(ldap_client_params_tmp));
         }
         catch (...)
         {

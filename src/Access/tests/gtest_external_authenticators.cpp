@@ -58,6 +58,33 @@ TEST(ExternalAuthenticators, ResetRemovesHTTPServers)
     EXPECT_THROW(ExternalAuthenticatorsTestAccess::getHTTPAuthenticationParams(authenticators, "primary"), Exception);
 }
 
+TEST(ExternalAuthenticators, DottedServerNamesUseLiteralLookupNames)
+{
+    ExternalAuthenticators authenticators;
+    const auto config = createConfig(R"(
+        <clickhouse>
+            <http_authentication_servers>
+                <http.with.dot>
+                    <uri>http://127.0.0.1:1/authenticate</uri>
+                </http.with.dot>
+            </http_authentication_servers>
+            <ldap_servers>
+                <ldap.with.dot>
+                    <host>127.0.0.1</host>
+                </ldap.with.dot>
+            </ldap_servers>
+        </clickhouse>
+    )");
+    authenticators.setConfiguration(*config, getLogger("ExternalAuthenticatorsDottedNamesTest"));
+
+    EXPECT_EQ(
+        ExternalAuthenticatorsTestAccess::getHTTPAuthenticationParams(authenticators, "http.with.dot").uri.toString(),
+        "http://127.0.0.1:1/authenticate");
+    EXPECT_EQ(
+        ExternalAuthenticatorsTestAccess::getLDAPParams(authenticators, "ldap.with.dot").host,
+        "127.0.0.1");
+}
+
 TEST(ExternalAuthenticators, FailedReloadPreservesPreviousConfiguration)
 {
     ExternalAuthenticators authenticators;
