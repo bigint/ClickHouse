@@ -118,7 +118,16 @@ void parseLDAPServer(LDAPClient::Params & params, const Poco::Util::AbstractConf
     }
 
     if (has_verification_cooldown)
-        params.verification_cooldown = std::chrono::seconds{config.getUInt64(ldap_server_config + ".verification_cooldown")};
+    {
+        const auto verification_cooldown = config.getUInt64(ldap_server_config + ".verification_cooldown");
+        using SecondsRep = std::chrono::seconds::rep;
+        if (verification_cooldown > static_cast<UInt64>(std::numeric_limits<SecondsRep>::max()))
+            throw Exception(
+                ErrorCodes::BAD_ARGUMENTS,
+                "Bad value for 'verification_cooldown' entry: must not exceed {}",
+                std::numeric_limits<SecondsRep>::max());
+        params.verification_cooldown = std::chrono::seconds{static_cast<SecondsRep>(verification_cooldown)};
+    }
 
     if (has_enable_tls)
     {

@@ -122,4 +122,22 @@ TEST(ExternalAuthenticators, RejectsLDAPSearchLimitAboveAPIRange)
     EXPECT_THROW(ExternalAuthenticatorsTestAccess::getLDAPParams(authenticators, "primary"), std::out_of_range);
 }
 
+TEST(ExternalAuthenticators, RejectsLDAPVerificationCooldownAboveRepresentationRange)
+{
+    ExternalAuthenticators authenticators;
+    const auto config = createConfig(R"(
+        <clickhouse>
+            <ldap_servers>
+                <primary>
+                    <host>127.0.0.1</host>
+                    <verification_cooldown>18446744073709551615</verification_cooldown>
+                </primary>
+            </ldap_servers>
+        </clickhouse>
+    )");
+    authenticators.setConfiguration(*config, getLogger("ExternalAuthenticatorsLDAPCooldownTest"));
+
+    EXPECT_THROW(ExternalAuthenticatorsTestAccess::getLDAPParams(authenticators, "primary"), std::out_of_range);
+}
+
 }
