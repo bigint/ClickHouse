@@ -437,6 +437,13 @@ AccessRightsElements AccessRestorerFromBackup::getRequiredAccess() const
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Access entities not loaded");
 
     AccessRightsElements res;
+    std::unordered_set<UUID> ids_to_restore;
+    for (const auto & [id, entity_info] : entity_infos)
+    {
+        if (entity_info.restore)
+            ids_to_restore.emplace(id);
+    }
+
     for (const auto & [id, entity_info] : entity_infos)
     {
         if (!entity_info.restore)
@@ -512,6 +519,65 @@ AccessRightsElements AccessRestorerFromBackup::getRequiredAccess() const
                 throw Exception(ErrorCodes::LOGICAL_ERROR, "Unknown type: {}", toString(entity_type));
         }
     }
+
+    if (!update_dependents)
+        return res;
+
+    for (const auto & [id, entity_info] : entity_infos)
+    {
+        /// With `kCreateIfNotExists`, an entity selected for restoration can turn out to
+        /// exist and then be updated as a dependent. Other non-restored entity snapshots
+        /// are dependents directly. `kCreate` fails on an existing entity and `kReplace`
+        /// replaces it, so neither mode needs an additional alter permission here.
+        const bool may_update_existing = !entity_info.restore || (creation_mode == RestoreAccessCreationMode::kCreateIfNotExists);
+        if (!may_update_existing || !entity_info.entity || !entity_info.entity->hasDependencies(ids_to_restore))
+            continue;
+
+        const auto & entity = entity_info.entity;
+        switch (entity->getType())
+        {
+            case User::TYPE:
+            {
+                const auto & user = typeid_cast<const User &>(*entity);
+                res.emplace_back(AccessType::ALTER_USER, user.getName());
+                if (user.granted_roles.hasDependencies(ids_to_restore))
+                    res.emplace_back(AccessType::ROLE_ADMIN);
+                break;
+            }
+
+            case Role::TYPE:
+            {
+                const auto & role = typeid_cast<const Role &>(*entity);
+                res.emplace_back(AccessType::ALTER_ROLE, role.getName());
+                if (role.granted_roles.hasDependencies(ids_to_restore))
+                    res.emplace_back(AccessType::ROLE_ADMIN);
+                break;
+            }
+
+            case SettingsProfile::TYPE:
+                res.emplace_back(AccessType::ALTER_SETTINGS_PROFILE);
+                break;
+
+            case RowPolicy::TYPE:
+            {
+                const auto & policy = typeid_cast<const RowPolicy &>(*entity);
+                res.emplace_back(AccessType::ALTER_ROW_POLICY, policy.getDatabase(), policy.getTableName());
+                break;
+            }
+
+            case Quota::TYPE:
+                res.emplace_back(AccessType::ALTER_QUOTA);
+                break;
+
+            case MaskingPolicy::TYPE:
+                res.emplace_back(AccessType::ALTER_MASKING_POLICY);
+                break;
+
+            default:
+                throw Exception(ErrorCodes::LOGICAL_ERROR, "Unknown type: {}", toString(entity->getType()));
+        }
+    }
+
     return res;
 }
 
