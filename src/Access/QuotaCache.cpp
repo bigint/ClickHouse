@@ -339,24 +339,30 @@ void QuotaCache::ensureAllQuotasRead()
     if (all_quotas_read)
         return;
 
-    subscription = access_control.subscribeForChanges<Quota>(
-        [this](const std::vector<AccessChangesNotifier::Change> & changes)
-        {
-            std::lock_guard lock{mutex};
-            std::unordered_set<UUID> changed_ids;
-            for (const auto & change : changes)
-                changed_ids.emplace(change.id);
-
-            for (const auto & id : changed_ids)
+    /// An earlier initial scan can have thrown after establishing the subscription.
+    /// Reuse it on retry: replacing it while holding `mutex` can deadlock with the old
+    /// handler, whose unsubscription waits for delivery while that delivery waits here.
+    if (!subscription)
+    {
+        subscription = access_control.subscribeForChanges<Quota>(
+            [this](const std::vector<AccessChangesNotifier::Change> & changes)
             {
-                auto entity = access_control.tryRead(id);
-                if (auto quota = entity ? typeid_cast<QuotaPtr>(entity) : nullptr)
-                    quotaAddedOrChanged(id, quota);
-                else
-                    quotaRemoved(id);
-            }
-            chooseQuotaToConsumeIfNeeded();
-        });
+                std::lock_guard lock{mutex};
+                std::unordered_set<UUID> changed_ids;
+                for (const auto & change : changes)
+                    changed_ids.emplace(change.id);
+
+                for (const auto & id : changed_ids)
+                {
+                    auto entity = access_control.tryRead(id);
+                    if (auto quota = entity ? typeid_cast<QuotaPtr>(entity) : nullptr)
+                        quotaAddedOrChanged(id, quota);
+                    else
+                        quotaRemoved(id);
+                }
+                chooseQuotaToConsumeIfNeeded();
+            });
+    }
 
     /// Start clean: a previous attempt may have thrown mid-scan.
     all_quotas.clear();

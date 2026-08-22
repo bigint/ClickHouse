@@ -40,24 +40,30 @@ void SettingsProfilesCache::ensureAllProfilesRead()
     if (all_profiles_read)
         return;
 
-    subscription = access_control.subscribeForChanges<SettingsProfile>(
-        [this](const std::vector<AccessChangesNotifier::Change> & changes)
-        {
-            std::lock_guard lock{mutex};
-            std::unordered_set<UUID> changed_ids;
-            for (const auto & change : changes)
-                changed_ids.emplace(change.id);
-
-            for (const auto & id : changed_ids)
+    /// An earlier initial scan can have thrown after establishing the subscription.
+    /// Reuse it on retry: replacing it while holding `mutex` can deadlock with the old
+    /// handler, whose unsubscription waits for delivery while that delivery waits here.
+    if (!subscription)
+    {
+        subscription = access_control.subscribeForChanges<SettingsProfile>(
+            [this](const std::vector<AccessChangesNotifier::Change> & changes)
             {
-                auto entity = access_control.tryRead(id);
-                if (auto profile = entity ? typeid_cast<SettingsProfilePtr>(entity) : nullptr)
-                    profileAddedOrChanged(id, profile);
-                else
-                    profileRemoved(id);
-            }
-            mergeSettingsAndConstraintsIfNeeded();
-        });
+                std::lock_guard lock{mutex};
+                std::unordered_set<UUID> changed_ids;
+                for (const auto & change : changes)
+                    changed_ids.emplace(change.id);
+
+                for (const auto & id : changed_ids)
+                {
+                    auto entity = access_control.tryRead(id);
+                    if (auto profile = entity ? typeid_cast<SettingsProfilePtr>(entity) : nullptr)
+                        profileAddedOrChanged(id, profile);
+                    else
+                        profileRemoved(id);
+                }
+                mergeSettingsAndConstraintsIfNeeded();
+            });
+    }
 
     /// Start clean: a previous attempt may have thrown mid-scan.
     all_profiles.clear();

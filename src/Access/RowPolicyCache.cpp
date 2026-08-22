@@ -155,27 +155,33 @@ void RowPolicyCache::ensureAllRowPoliciesRead()
     if (all_policies_read)
         return;
 
-    subscription = access_control.subscribeForChanges<RowPolicy>(
-        [this](const std::vector<AccessChangesNotifier::Change> & changes)
-        {
+    /// An earlier initial scan can have thrown after establishing the subscription.
+    /// Reuse it on retry: replacing it while holding `mutex` can deadlock with the old
+    /// handler, whose unsubscription waits for delivery while that delivery waits here.
+    if (!subscription)
+    {
+        subscription = access_control.subscribeForChanges<RowPolicy>(
+            [this](const std::vector<AccessChangesNotifier::Change> & changes)
             {
-                std::lock_guard lock{mutex};
-                std::unordered_set<UUID> changed_ids;
-                for (const auto & change : changes)
-                    changed_ids.emplace(change.id);
-
-                for (const auto & id : changed_ids)
                 {
-                    auto entity = access_control.tryRead(id);
-                    if (auto policy = entity ? typeid_cast<RowPolicyPtr>(entity) : nullptr)
-                        rowPolicyAddedOrChanged(id, policy);
-                    else
-                        rowPolicyRemoved(id);
+                    std::lock_guard lock{mutex};
+                    std::unordered_set<UUID> changed_ids;
+                    for (const auto & change : changes)
+                        changed_ids.emplace(change.id);
+
+                    for (const auto & id : changed_ids)
+                    {
+                        auto entity = access_control.tryRead(id);
+                        if (auto policy = entity ? typeid_cast<RowPolicyPtr>(entity) : nullptr)
+                            rowPolicyAddedOrChanged(id, policy);
+                        else
+                            rowPolicyRemoved(id);
+                    }
                 }
-            }
-            /// Off `mutex` - see mixFiltersIfNeeded.
-            mixFiltersIfNeeded();
-        });
+                /// Off `mutex` - see mixFiltersIfNeeded.
+                mixFiltersIfNeeded();
+            });
+    }
 
     /// Start clean: a previous attempt may have thrown mid-scan.
     all_policies.clear();
