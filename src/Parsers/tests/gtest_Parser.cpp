@@ -90,6 +90,15 @@ TEST(ParserCreateUserQuery, CloneOwnsAuthenticationMethodValidUntil)
     EXPECT_NE(original_methods.front()->valid_until.get(), cloned_methods.front()->valid_until.get());
 }
 
+TEST(ParserCreateUserQuery, MalformedAuthenticationMethodIsSafeToInspect)
+{
+    ASTAuthenticationData authentication_method;
+    authentication_method.contains_password = true;
+
+    EXPECT_FALSE(authentication_method.getPassword());
+    EXPECT_THROW(authentication_method.formatWithSecretsOneLine(), Exception);
+}
+
 /// The output-option children (INTO OUTFILE, COMPRESSION, FORMAT, SETTINGS) must end up
 /// in the same canonical order whether the AST is freshly parsed, cloned, or obtained by
 /// a format+reparse roundtrip. Otherwise the tree hash differs across these paths, which

@@ -24,7 +24,7 @@ namespace
 
 std::optional<String> ASTAuthenticationData::getPassword() const
 {
-    if (contains_password)
+    if (contains_password && !children.empty())
     {
         if (const auto * password = children[0]->as<const ASTLiteral>())
         {
@@ -137,6 +137,9 @@ void ASTAuthenticationData::formatImpl(WriteBuffer & ostr, const FormatSettings 
             }
             case AuthenticationType::SSL_CERTIFICATE:
             {
+                if (!ssl_cert_subject_type)
+                    throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData for SSL certificate has no subject type");
+
                 prefix = ssl_cert_subject_type.value();
                 parameters = true;
                 break;
@@ -177,6 +180,12 @@ void ASTAuthenticationData::formatImpl(WriteBuffer & ostr, const FormatSettings 
         prefix = "BY";
         password = true;
     }
+
+    if ((password || parameter) && children.empty())
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData has no argument to format");
+
+    if (parameters && children.empty())
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData has no arguments to format");
 
     if (password && !settings.show_secrets)
     {
