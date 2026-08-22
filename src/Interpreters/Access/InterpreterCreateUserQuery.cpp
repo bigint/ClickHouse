@@ -146,19 +146,20 @@ namespace
             throw Exception(ErrorCodes::BAD_ARGUMENTS, "Authentication method 'no_password' cannot co-exist with other authentication methods");
         }
 
-        if (!query.alter)
+        /// On creation validate the complete resulting list. On alter validate only methods
+        /// supplied by this query, so an unrelated alter remains possible for a legacy user
+        /// whose existing authentication method is no longer allowed by server policy.
+        const auto & authentication_methods_to_validate = query.alter ? authentication_methods : user.authentication_methods;
+        for (const auto & authentication_method : authentication_methods_to_validate)
         {
-            for (const auto & authentication_method : user.authentication_methods)
+            auto auth_type = authentication_method.getType();
+            if (((auth_type == AuthenticationType::NO_PASSWORD) && !allow_no_password) ||
+                ((auth_type == AuthenticationType::PLAINTEXT_PASSWORD) && !allow_plaintext_password))
             {
-                auto auth_type = authentication_method.getType();
-                if (((auth_type == AuthenticationType::NO_PASSWORD) && !allow_no_password) ||
-                    ((auth_type == AuthenticationType::PLAINTEXT_PASSWORD)  && !allow_plaintext_password))
-                {
-                    throw Exception(ErrorCodes::BAD_ARGUMENTS,
-                                    "Authentication type {} is not allowed, check the setting allow_{} in the server configuration",
-                                    toString(auth_type),
-                                    AuthenticationTypeInfo::get(auth_type).name);
-                }
+                throw Exception(ErrorCodes::BAD_ARGUMENTS,
+                                "Authentication type {} is not allowed, check the setting allow_{} in the server configuration",
+                                toString(auth_type),
+                                AuthenticationTypeInfo::get(auth_type).name);
             }
         }
 
@@ -399,8 +400,8 @@ void InterpreterCreateUserQuery::updateUserFromQuery(
         query.reset_authentication_methods_to_new,
         query.replace_authentication_methods,
         allow_no_password,
+        allow_no_password,
         allow_plaintext_password,
-        true,
         max_number_of_authentication_methods);
 }
 
