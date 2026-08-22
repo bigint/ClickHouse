@@ -141,10 +141,21 @@ void SettingsProfilesCache::setDefaultProfileName(const String & default_profile
     if ((this->default_profile_name == default_profile_name) && (default_profile_id == new_default_profile_id))
         return;
 
+    const String old_default_profile_name = this->default_profile_name;
+    const auto old_default_profile_id = default_profile_id;
+    const bool old_need_merge_settings_and_constraints = need_merge_settings_and_constraints;
+    scope_guard rollback = [&]
+    {
+        this->default_profile_name = old_default_profile_name;
+        default_profile_id = old_default_profile_id;
+        need_merge_settings_and_constraints = old_need_merge_settings_and_constraints;
+    };
+
     this->default_profile_name = default_profile_name;
     default_profile_id = new_default_profile_id;
     need_merge_settings_and_constraints = true;
     mergeSettingsAndConstraintsIfNeeded();
+    rollback.release();
 }
 
 

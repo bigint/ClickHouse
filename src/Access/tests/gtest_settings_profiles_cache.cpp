@@ -159,6 +159,32 @@ TEST(SettingsProfilesCache, DefaultProfileChangeRefreshesExistingEnabledSettings
     EXPECT_TRUE(enabled_settings->getInfo()->profiles_with_implicit.empty());
 }
 
+TEST(SettingsProfilesCache, FailedDefaultProfileChangeCanBeRetried)
+{
+    AccessControl access_control;
+    auto storage = std::make_shared<MemoryAccessStorage>("memory", access_control.getChangesNotifier(), true);
+    access_control.setStorages({storage});
+
+    auto valid_profile = std::make_shared<SettingsProfile>();
+    valid_profile->setName("valid");
+    const auto valid_profile_id = access_control.insert(valid_profile);
+
+    auto invalid_profile = std::make_shared<SettingsProfile>();
+    invalid_profile->setName("invalid");
+    auto & invalid_constraint = invalid_profile->elements.emplace_back();
+    invalid_constraint.setting_name = "unknown_setting";
+    invalid_constraint.writability = SettingConstraintWritability::CONST;
+    access_control.insert(invalid_profile);
+
+    access_control.setDefaultProfileName("valid");
+    auto enabled_settings = access_control.getEnabledSettings(UUIDHelpers::generateV4(), {}, {}, {});
+    EXPECT_EQ(std::vector<UUID>{valid_profile_id}, enabled_settings->getInfo()->profiles_with_implicit);
+
+    EXPECT_THROW(access_control.setDefaultProfileName("invalid"), Exception);
+    EXPECT_EQ(std::vector<UUID>{valid_profile_id}, enabled_settings->getInfo()->profiles_with_implicit);
+    EXPECT_THROW(access_control.setDefaultProfileName("invalid"), Exception);
+}
+
 TEST(SettingsProfilesCache, DefaultProfileTracksConfiguredName)
 {
     AccessControl access_control;
