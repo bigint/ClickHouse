@@ -27,6 +27,11 @@ LDAPAccessStorage::LDAPAccessStorage(const String & storage_name_, AccessControl
     setConfiguration(config, prefix);
 }
 
+LDAPAccessStorage::~LDAPAccessStorage()
+{
+    role_change_subscription.reset();
+}
+
 
 String LDAPAccessStorage::getLDAPServerName() const
 {

@@ -33,7 +33,7 @@ public:
     static constexpr char STORAGE_TYPE[] = "ldap";
 
     explicit LDAPAccessStorage(const String & storage_name_, AccessControl & access_control_, const Poco::Util::AbstractConfiguration & config, const String & prefix);
-    ~LDAPAccessStorage() override = default;
+    ~LDAPAccessStorage() override;
 
     String getLDAPServerName() const;
 

@@ -26,7 +26,10 @@ namespace ErrorCodes
 SettingsProfilesCache::SettingsProfilesCache(const AccessControl & access_control_)
     : access_control(access_control_) {}
 
-SettingsProfilesCache::~SettingsProfilesCache() = default;
+SettingsProfilesCache::~SettingsProfilesCache()
+{
+    subscription.reset();
+}
 
 
 void SettingsProfilesCache::ensureAllProfilesRead()

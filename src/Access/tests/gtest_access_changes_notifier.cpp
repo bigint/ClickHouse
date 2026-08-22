@@ -5,6 +5,7 @@
 #include <Core/UUID.h>
 #include <Common/Exception.h>
 
+#include <chrono>
 #include <future>
 
 using namespace DB;
@@ -211,4 +212,61 @@ TEST(AccessChangesNotifier, DeferralDelaysConcurrentSend)
     EXPECT_EQ(delivered_changes, 0u);
     deferral.reset();
     EXPECT_EQ(delivered_changes, 1u);
+}
+
+TEST(AccessChangesNotifier, UnsubscribeWaitsForInFlightHandler)
+{
+    AccessChangesNotifier notifier;
+    std::promise<void> handler_started_promise;
+    auto handler_started = handler_started_promise.get_future();
+    std::promise<void> release_handler_promise;
+    auto release_handler = release_handler_promise.get_future();
+    auto subscription = notifier.subscribeForChanges(
+        AccessEntityType::ROLE,
+        [&](const std::vector<AccessChangesNotifier::Change> &)
+        {
+            handler_started_promise.set_value();
+            release_handler.wait();
+        });
+
+    notifier.onEntityRemoved(UUIDHelpers::generateV4(), AccessEntityType::ROLE);
+    auto sender = std::async(std::launch::async, [&] { notifier.sendNotifications(); });
+    handler_started.wait();
+
+    std::promise<void> unsubscribe_started_promise;
+    auto unsubscribe_started = unsubscribe_started_promise.get_future();
+    auto unsubscriber = std::async(
+        std::launch::async,
+        [&]
+        {
+            unsubscribe_started_promise.set_value();
+            subscription.reset();
+        });
+    unsubscribe_started.wait();
+
+    EXPECT_EQ(unsubscriber.wait_for(std::chrono::milliseconds(50)), std::future_status::timeout);
+    release_handler_promise.set_value();
+    unsubscriber.get();
+    sender.get();
+}
+
+TEST(AccessChangesNotifier, HandlerCanUnsubscribeItself)
+{
+    AccessChangesNotifier notifier;
+    size_t handler_calls = 0;
+    scope_guard subscription;
+    subscription = notifier.subscribeForChanges(
+        AccessEntityType::ROLE,
+        [&](const std::vector<AccessChangesNotifier::Change> &)
+        {
+            ++handler_calls;
+            subscription.reset();
+        });
+
+    notifier.onEntityRemoved(UUIDHelpers::generateV4(), AccessEntityType::ROLE);
+    notifier.sendNotifications();
+    notifier.onEntityRemoved(UUIDHelpers::generateV4(), AccessEntityType::ROLE);
+    notifier.sendNotifications();
+
+    EXPECT_EQ(handler_calls, 1u);
 }

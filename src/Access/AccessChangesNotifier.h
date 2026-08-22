@@ -33,9 +33,10 @@ public:
     using OnChangedHandler = std::function<void(const std::vector<Change> & changes)>;
 
     /// Subscribes for all changes of entities of a given type.
-    /// A by-type handler is called on every sendNotifications(), even when no entity of that type changed
+    /// A by-type handler is called on every `sendNotifications`, even when no entity of that type changed
     /// (with an empty `changes`), so a recomputation that threw (and left its work pending) is retried on
     /// the next call without waiting for a fresh access change; it must therefore be cheap when idle.
+    /// Destroying the returned guard waits for a handler already running on another thread.
     scope_guard subscribeForChanges(AccessEntityType type, const OnChangedHandler & handler);
 
     template <typename EntityClassT>
@@ -71,6 +72,7 @@ private:
         std::unordered_map<UUID, std::list<OnChangedHandler>> by_id;
         std::list<OnChangedHandler> by_type[static_cast<size_t>(AccessEntityType::MAX)];
         std::mutex mutex;
+        std::recursive_mutex delivery_mutex;
     };
 
     /// shared_ptr is here for safety because AccessChangesNotifier can be destroyed before all subscriptions are removed.
@@ -78,10 +80,9 @@ private:
 
     std::vector<Change> queue;
     std::mutex queue_mutex;
-    std::recursive_mutex sending_notifications;
-    bool sending_notifications_in_progress = false; /// guarded by `sending_notifications`
-    size_t notification_deferral_depth = 0; /// guarded by `sending_notifications`
-    bool notification_pending = false; /// guarded by `sending_notifications`
+    bool sending_notifications_in_progress = false; /// guarded by `Handlers::delivery_mutex`
+    size_t notification_deferral_depth = 0; /// guarded by `Handlers::delivery_mutex`
+    bool notification_pending = false; /// guarded by `Handlers::delivery_mutex`
 };
 
 }

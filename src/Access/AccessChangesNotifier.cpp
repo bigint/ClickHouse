@@ -52,6 +52,7 @@ scope_guard AccessChangesNotifier::subscribeForChanges(AccessEntityType type, co
 
     return [my_handlers = handlers, type, handler_it]
     {
+        std::lock_guard delivery_lock{my_handlers->delivery_mutex};
         std::lock_guard lock2{my_handlers->mutex};
         auto & list2 = my_handlers->by_type[static_cast<size_t>(type)];
         list2.erase(handler_it);
@@ -69,6 +70,7 @@ scope_guard AccessChangesNotifier::subscribeForChanges(const UUID & id, const On
     /// invalidate the iterator (the `std::list` iterator `handler_it` stays valid across rehashes).
     return [my_handlers = handlers, id, handler_it]
     {
+        std::lock_guard delivery_lock{my_handlers->delivery_mutex};
         std::lock_guard lock2{my_handlers->mutex};
         auto it = my_handlers->by_id.find(id);
         if (it == my_handlers->by_id.end())
@@ -91,11 +93,11 @@ scope_guard AccessChangesNotifier::subscribeForChanges(const std::vector<UUID> &
 
 scope_guard AccessChangesNotifier::deferNotifications()
 {
-    std::lock_guard lock{sending_notifications};
+    std::lock_guard lock{handlers->delivery_mutex};
     ++notification_deferral_depth;
-    return [this]
+    return [this, my_handlers = handlers]
     {
-        std::lock_guard lock2{sending_notifications};
+        std::lock_guard lock2{my_handlers->delivery_mutex};
         chassert(notification_deferral_depth != 0);
         if (--notification_deferral_depth != 0 || !notification_pending)
             return;
@@ -108,7 +110,7 @@ scope_guard AccessChangesNotifier::deferNotifications()
 void AccessChangesNotifier::sendNotifications()
 {
     /// Only one thread can send notifications at any time.
-    std::lock_guard sending_notifications_lock{sending_notifications};
+    std::lock_guard delivery_lock{handlers->delivery_mutex};
     if (notification_deferral_depth != 0)
     {
         notification_pending = true;

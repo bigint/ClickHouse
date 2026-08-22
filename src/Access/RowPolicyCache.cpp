@@ -114,7 +114,10 @@ RowPolicyCache::RowPolicyCache(const AccessControl & access_control_)
 {
 }
 
-RowPolicyCache::~RowPolicyCache() = default;
+RowPolicyCache::~RowPolicyCache()
+{
+    subscription.reset();
+}
 
 
 std::shared_ptr<const EnabledRowPolicies> RowPolicyCache::getEnabledRowPolicies(const UUID & user_id, const boost::container::flat_set<UUID> & enabled_roles)

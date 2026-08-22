@@ -72,7 +72,10 @@ RoleCache::RoleCache(const AccessControl & access_control_, int expiration_time_
 }
 
 
-RoleCache::~RoleCache() = default;
+RoleCache::~RoleCache()
+{
+    subscription.reset();
+}
 
 
 std::shared_ptr<const EnabledRoles>

@@ -247,7 +247,10 @@ QuotaCache::QuotaCache(const AccessControl & access_control_)
 {
 }
 
-QuotaCache::~QuotaCache() = default;
+QuotaCache::~QuotaCache()
+{
+    subscription.reset();
+}
 
 
 std::shared_ptr<const EnabledQuota> QuotaCache::getEnabledQuota(
