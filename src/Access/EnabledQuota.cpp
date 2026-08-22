@@ -48,21 +48,14 @@ struct EnabledQuota::Impl
         auto quota_type_i = static_cast<size_t>(quota_type);
         for (const auto & interval : intervals.intervals)
         {
+            auto end_of_interval = interval.getEndOfInterval(current_time);
             QuotaValue used = (interval.used[quota_type_i] += value);
             QuotaValue max = interval.max[quota_type_i];
             if (!max)
                 continue;
 
-            if (used > max)
-            {
-                bool counters_were_reset = false;
-                auto end_of_interval = interval.getEndOfInterval(current_time, counters_were_reset);
-                if (counters_were_reset)
-                    used = (interval.used[quota_type_i] += value);
-
-                if (check_exceeded && (used > max))
-                    throwQuotaExceed(user_name, intervals.quota_name, quota_type, used, max, interval.duration, end_of_interval);
-            }
+            if (check_exceeded && (used > max))
+                throwQuotaExceed(user_name, intervals.quota_name, quota_type, used, max, interval.duration, end_of_interval);
         }
     }
 
@@ -86,7 +79,7 @@ struct EnabledQuota::Impl
 
             QuotaValue current_count = 0;
             {
-                std::lock_guard lock(interval.per_hash_mutex);
+                std::lock_guard lock(interval.mutex);
                 current_count = ++interval.per_hash_used[normalized_query_hash];
             }
 
@@ -115,18 +108,14 @@ struct EnabledQuota::Impl
         auto quota_type_i = static_cast<size_t>(quota_type);
         for (const auto & interval : intervals.intervals)
         {
+            auto end_of_interval = interval.getEndOfInterval(current_time);
             QuotaValue used = interval.used[quota_type_i];
             QuotaValue max = interval.max[quota_type_i];
             if (!max)
                 continue;
 
             if (used > max)
-            {
-                bool counters_were_reset = false;
-                auto end_of_interval = interval.getEndOfInterval(current_time, counters_were_reset);
-                if (!counters_were_reset)
-                    throwQuotaExceed(user_name, intervals.quota_name, quota_type, used, max, interval.duration, end_of_interval);
-            }
+                throwQuotaExceed(user_name, intervals.quota_name, quota_type, used, max, interval.duration, end_of_interval);
         }
     }
 
@@ -151,8 +140,8 @@ struct EnabledQuota::Impl
         const auto quota_type_i = static_cast<size_t>(quota_type);
         for (const auto & interval : intervals.intervals)
         {
-            interval.used[quota_type_i] = value;
             interval.getEndOfInterval(current_time);
+            interval.used[quota_type_i] = value;
         }
     }
 };
@@ -182,6 +171,10 @@ EnabledQuota::Interval & EnabledQuota::Interval::operator =(const Interval & src
     if (this == &src)
         return *this;
 
+    /// Use `std::scoped_lock` to acquire both mutexes with deadlock avoidance,
+    /// because `std::swap` (used in sort) calls `operator=` in both directions.
+    std::scoped_lock both_locks(src.mutex, mutex);
+
     randomize_interval = src.randomize_interval;
     duration = src.duration;
     end_of_interval.store(src.end_of_interval.load());
@@ -192,13 +185,7 @@ EnabledQuota::Interval & EnabledQuota::Interval::operator =(const Interval & src
         used[quota_type_i].store(src.used[quota_type_i].load());
     }
 
-    /// Copy per-hash map.
-    /// Use std::scoped_lock to acquire both mutexes with deadlock avoidance,
-    /// because std::swap (used in sort) calls operator= in both directions.
-    {
-        std::scoped_lock both_locks(src.per_hash_mutex, per_hash_mutex);
-        per_hash_used = src.per_hash_used;
-    }
+    per_hash_used = src.per_hash_used;
 
     return *this;
 }
@@ -225,37 +212,32 @@ std::chrono::system_clock::time_point EnabledQuota::Interval::getEndOfInterval(s
         return end;
     }
 
-    bool need_reset_counters = false;
-
-    do
+    /// Keep the old end visible until the counters are cleared. Other operations whose time is in
+    /// the new interval will take this same slow path and wait instead of incrementing a counter
+    /// which the rollover could subsequently erase.
+    std::lock_guard reset_lock(mutex);
+    end_loaded = end_of_interval.load();
+    end = std::chrono::system_clock::time_point{end_loaded};
+    if (current_time < end)
     {
-        /// Calculate the end of the next interval:
-        ///  |                     X                                 |
-        /// end               current_time                next_end = end + duration * n
-        /// where n is an integer number, n >= 1.
-        UInt64 n = static_cast<UInt64>((current_time - end + duration) / duration);
-        end = end + duration * n;
-        if (end_of_interval.compare_exchange_strong(end_loaded, end.time_since_epoch()))
-        {
-            need_reset_counters = true;
-            break;
-        }
-        end = std::chrono::system_clock::time_point{end_loaded};
+        counters_were_reset = false;
+        return end;
     }
-    while (current_time >= end);
 
-    if (need_reset_counters)
-    {
-        boost::range::fill(used, 0);
+    /// Calculate the end of the next interval:
+    ///  |                     X                                 |
+    /// end               current_time                next_end = end + duration * n
+    /// where n is an integer number, n >= 1.
+    UInt64 n = static_cast<UInt64>((current_time - end + duration) / duration);
+    end = end + duration * n;
 
-        /// Also clear per-hash counters.
-        {
-            std::lock_guard lock(per_hash_mutex);
-            per_hash_used.clear();
-        }
+    boost::range::fill(used, 0);
 
-        counters_were_reset = true;
-    }
+    /// Also clear per-hash counters.
+    per_hash_used.clear();
+
+    end_of_interval.store(end.time_since_epoch());
+    counters_were_reset = true;
     return end;
 }
 

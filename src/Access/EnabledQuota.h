@@ -20,6 +20,7 @@
 namespace DB
 {
 struct QuotaUsage;
+struct EnabledQuotaTestAccess;
 
 
 /// Instances of `EnabledQuota` are used to track resource consumption.
@@ -85,6 +86,7 @@ public:
 
 private:
     friend class QuotaCache;
+    friend struct EnabledQuotaTestAccess;
     explicit EnabledQuota(const Params & params_);
     EnabledQuota() {} /// NOLINT
 
@@ -98,8 +100,8 @@ private:
         bool randomize_interval = false;
         mutable std::atomic<std::chrono::system_clock::duration> end_of_interval;
 
-        /// Per-normalized-query-hash counters for `QUERIES_PER_NORMALIZED_HASH`.
-        mutable std::mutex per_hash_mutex;
+        /// Guards interval rollover and the per-normalized-query-hash counters.
+        mutable std::mutex mutex;
         mutable HashMap<UInt64, QuotaValue> per_hash_used;
 
         Interval(std::chrono::seconds duration_, bool randomize_interval_, std::chrono::system_clock::time_point current_time_);
