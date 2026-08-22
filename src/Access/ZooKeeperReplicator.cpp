@@ -679,19 +679,31 @@ void ZooKeeperReplicator::refreshEntities(const zkutil::ZooKeeperPtr & zookeeper
     }
     else
     {
-        /// all=false means we read & parse only new access entities from ZooKeeper.
+        /// all=false means we read & parse only new access entities from ZooKeeper. Discover
+        /// additions under the cache lock, fetch them without that lock, then publish removals and
+        /// additions together so readers never observe a partially refreshed entity list.
         std::vector<UUID> new_uuids;
         {
             std::lock_guard lock{mutex};
-            memory_storage.removeAllExcept(entity_uuids);
             for (const auto & uuid : entity_uuids)
             {
                 if (!memory_storage.exists(uuid))
                     new_uuids.push_back(uuid);
             }
         }
+
+        std::vector<std::pair<UUID, AccessEntityPtr>> new_entities;
+        new_entities.reserve(new_uuids.size());
         for (const auto & uuid : new_uuids)
-            refreshEntityImpl(zookeeper, uuid);
+        {
+            if (auto entity = tryReadEntityFromZooKeeper(zookeeper, uuid))
+                new_entities.emplace_back(uuid, std::move(entity));
+        }
+
+        std::lock_guard lock{mutex};
+        memory_storage.removeAllExcept(entity_uuids);
+        for (const auto & [uuid, entity] : new_entities)
+            setEntityNoLock(uuid, entity);
     }
 
     LOG_DEBUG(&Poco::Logger::get(storage_name), "Refreshing entities list finished");
