@@ -245,17 +245,29 @@ HTTPAuthClientParams parseHTTPAuthParams(const Poco::Util::AbstractConfiguration
 
     http_auth_params.uri = config.getString(prefix + ".uri");
 
-    size_t connection_timeout_ms = config.getInt(prefix + ".connection_timeout_ms", 1000);
-    size_t receive_timeout_ms = config.getInt(prefix + ".receive_timeout_ms", 1000);
-    size_t send_timeout_ms = config.getInt(prefix + ".send_timeout_ms", 1000);
+    auto get_non_negative = [&config, &prefix](const String & name, int default_value)
+    {
+        const auto value = config.getInt(prefix + "." + name, default_value);
+        if (value < 0)
+            throw Exception(ErrorCodes::BAD_ARGUMENTS, "HTTP authentication setting '{}' must be non-negative", name);
+        return static_cast<size_t>(value);
+    };
+
+    const auto connection_timeout_ms = get_non_negative("connection_timeout_ms", 1000);
+    const auto receive_timeout_ms = get_non_negative("receive_timeout_ms", 1000);
+    const auto send_timeout_ms = get_non_negative("send_timeout_ms", 1000);
     http_auth_params.timeouts = ConnectionTimeouts()
         .withConnectionTimeout(Poco::Timespan(connection_timeout_ms * 1000))
         .withReceiveTimeout(Poco::Timespan(receive_timeout_ms * 1000))
         .withSendTimeout(Poco::Timespan(send_timeout_ms * 1000));
 
-    http_auth_params.max_tries = config.getInt(prefix + ".max_tries", 3);
-    http_auth_params.retry_initial_backoff_ms = config.getInt(prefix + ".retry_initial_backoff_ms", 50);
-    http_auth_params.retry_max_backoff_ms = config.getInt(prefix + ".retry_max_backoff_ms", 1000);
+    const auto max_tries = config.getInt(prefix + ".max_tries", 3);
+    if (max_tries <= 0)
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "HTTP authentication setting 'max_tries' must be positive");
+
+    http_auth_params.max_tries = static_cast<size_t>(max_tries);
+    http_auth_params.retry_initial_backoff_ms = get_non_negative("retry_initial_backoff_ms", 50);
+    http_auth_params.retry_max_backoff_ms = get_non_negative("retry_max_backoff_ms", 1000);
 
     Strings forward_headers;
     config.keys(prefix + ".forward_headers", forward_headers);
