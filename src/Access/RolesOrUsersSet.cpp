@@ -96,7 +96,8 @@ void RolesOrUsersSet::init(const ASTRolesOrUsersSet & ast, const AccessControl *
 
     if (ast.current_user && !all)
     {
-        chassert(current_user_id);
+        if (!current_user_id)
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "CURRENT_USER cannot be resolved without a current user ID");
         ids.insert(*current_user_id);
     }
 
@@ -109,7 +110,8 @@ void RolesOrUsersSet::init(const ASTRolesOrUsersSet & ast, const AccessControl *
 
     if (ast.except_current_user)
     {
-        chassert(current_user_id);
+        if (!current_user_id)
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "CURRENT_USER cannot be resolved without a current user ID");
         except_ids.insert(*current_user_id);
     }
 

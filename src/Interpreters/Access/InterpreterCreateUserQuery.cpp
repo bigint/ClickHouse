@@ -296,7 +296,7 @@ BlockIO InterpreterCreateUserQuery::execute()
     {
         std::optional<RolesOrUsersSet> grantees_from_query;
         if (query.grantees)
-            grantees_from_query = RolesOrUsersSet{*query.grantees, access_control};
+            grantees_from_query = RolesOrUsersSet{*query.grantees, access_control, getContext()->getUserID()};
 
         auto update_func = [&](const AccessEntityPtr & entity, const UUID &) -> AccessEntityPtr
         {
@@ -351,7 +351,8 @@ BlockIO InterpreterCreateUserQuery::execute()
 
         if (query.grantees)
         {
-            RolesOrUsersSet grantees_from_query = RolesOrUsersSet{*query.grantees, access_control};
+            RolesOrUsersSet grantees_from_query{
+                *query.grantees, access_control, getContext()->getUserID()};
             access_control.update(ids, [&](const AccessEntityPtr & entity, const UUID &) -> AccessEntityPtr
             {
                 auto updated_user = typeid_cast<std::shared_ptr<User>>(entity->clone());
