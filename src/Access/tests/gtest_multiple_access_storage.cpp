@@ -275,6 +275,34 @@ TEST(AccessControl, MoveDeliversNestedStorageNotifications)
     EXPECT_EQ(delivered_changes, 2u);
 }
 
+TEST(AccessControl, RemovalNotificationsObserveCleanedDependencies)
+{
+    AccessControl access_control;
+    auto storage = std::make_shared<MemoryAccessStorage>("memory", access_control.getChangesNotifier(), true);
+    access_control.setStorages({storage});
+
+    auto role = std::make_shared<Role>();
+    role->setName("role");
+    const auto role_id = access_control.insert(role);
+
+    auto user = std::make_shared<User>();
+    user->setName("user");
+    user->granted_roles.grant(role_id);
+    const auto user_id = access_control.insert(user);
+
+    bool dependency_was_cleaned = false;
+    auto subscription = access_control.subscribeForChanges<Role>(
+        [&](const std::vector<AccessChangesNotifier::Change> & changes)
+        {
+            if (!changes.empty())
+                dependency_was_cleaned = !access_control.read<User>(user_id)->granted_roles.isGranted(role_id);
+        });
+
+    access_control.remove(role_id);
+
+    EXPECT_TRUE(dependency_was_cleaned);
+}
+
 TEST(AccessControl, ReloadFailureDeliversQueuedNotifications)
 {
     AccessControl access_control;

@@ -323,6 +323,7 @@ bool IAccessStorage::insertImpl(const UUID &, const AccessEntityPtr & entity, bo
 
 bool IAccessStorage::remove(const UUID & id, bool throw_if_not_exists)
 {
+    auto notification_deferral = deferNotificationsForRemove();
     ++remove_depth;
     SCOPE_EXIT(--remove_depth);
     bool removed = removeImpl(id, throw_if_not_exists);
@@ -339,6 +340,7 @@ std::vector<UUID> IAccessStorage::remove(const std::vector<UUID> & ids, bool thr
     if (ids.size() == 1)
         return remove(ids[0], throw_if_not_exists) ? ids : std::vector<UUID>{};
 
+    auto notification_deferral = deferNotificationsForRemove();
     ++remove_depth;
     SCOPE_EXIT(--remove_depth);
 

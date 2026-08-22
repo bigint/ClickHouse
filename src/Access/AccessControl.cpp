@@ -26,10 +26,11 @@
 #include <Common/Exception.h>
 #include <Common/re2.h>
 
-#include <Poco/AccessExpireCache.h>
-#include <boost/algorithm/string/join.hpp>
 #include <filesystem>
 #include <mutex>
+#include <unordered_map>
+#include <boost/algorithm/string/join.hpp>
+#include <Poco/AccessExpireCache.h>
 
 
 namespace DB
@@ -66,6 +67,17 @@ namespace
                 users_config_path, config_path);
         }
     }
+}
+
+namespace
+{
+struct NotificationDeferralState
+{
+    size_t depth = 0;
+    bool pending = false;
+};
+
+thread_local std::unordered_map<const AccessControl *, NotificationDeferralState> notification_deferrals;
 }
 
 
@@ -331,7 +343,7 @@ void AccessControl::setUsersConfig(const Poco::Util::AbstractConfiguration & use
         if (auto users_config_storage = typeid_cast<std::shared_ptr<UsersConfigAccessStorage>>(storage))
         {
             users_config_storage->setConfig(users_config_);
-            changes_notifier->sendNotifications();
+            sendNotifications();
             return;
         }
     }
@@ -343,7 +355,7 @@ void AccessControl::addUsersConfigStorage(const String & storage_name_, const Po
     auto new_storage = std::make_shared<UsersConfigAccessStorage>(storage_name_, *this, allow_backup_);
     new_storage->setConfig(users_config_);
     addStorage(new_storage);
-    changes_notifier->sendNotifications();
+    sendNotifications();
     LOG_DEBUG(getLogger(), "Added {} access storage '{}', path: {}",
         String(new_storage->getStorageType()), new_storage->getStorageName(), new_storage->getPath());
 }
@@ -368,7 +380,7 @@ void AccessControl::addUsersConfigStorage(
     auto new_storage = std::make_shared<UsersConfigAccessStorage>(storage_name_, *this, allow_backup_);
     new_storage->load(users_config_path_, include_from_path_, preprocessed_dir_, get_zookeeper_function_);
     addStorage(new_storage);
-    changes_notifier->sendNotifications();
+    sendNotifications();
     LOG_DEBUG(getLogger(), "Added {} access storage '{}', path: {}", String(new_storage->getStorageType()), new_storage->getStorageName(), new_storage->getPath());
 }
 
@@ -393,7 +405,7 @@ void AccessControl::addReplicatedStorage(
         allow_backup_,
         throw_on_invalid_replicated_access_entities);
     addStorage(new_storage);
-    changes_notifier->sendNotifications();
+    sendNotifications();
     LOG_DEBUG(getLogger(), "Added {} access storage '{}'", String(new_storage->getStorageType()), new_storage->getStorageName());
 }
 
@@ -414,7 +426,7 @@ void AccessControl::addDiskStorage(const String & storage_name_, const String & 
     }
     auto new_storage = std::make_shared<DiskAccessStorage>(storage_name_, directory_, *changes_notifier, readonly_, allow_backup_);
     addStorage(new_storage);
-    changes_notifier->sendNotifications();
+    sendNotifications();
     LOG_DEBUG(getLogger(), "Added {} access storage '{}', path: {}", String(new_storage->getStorageType()), new_storage->getStorageName(), new_storage->getPath());
 }
 
@@ -556,10 +568,10 @@ void AccessControl::reload(ReloadMode reload_mode)
     }
     catch (...)
     {
-        changes_notifier->sendNotifications();
+        sendNotifications();
         throw;
     }
-    changes_notifier->sendNotifications();
+    sendNotifications();
 }
 
 void AccessControl::moveAccessEntities(
@@ -571,10 +583,10 @@ void AccessControl::moveAccessEntities(
     }
     catch (...)
     {
-        changes_notifier->sendNotifications();
+        sendNotifications();
         throw;
     }
-    changes_notifier->sendNotifications();
+    sendNotifications();
 }
 
 scope_guard AccessControl::subscribeForChanges(AccessEntityType type, const OnChangedHandler & handler) const
@@ -596,7 +608,7 @@ bool AccessControl::insertImpl(const UUID & id, const AccessEntityPtr & entity, 
 {
     if (MultipleAccessStorage::insertImpl(id, entity, replace_if_exists, throw_if_exists, conflicting_id))
     {
-        changes_notifier->sendNotifications();
+        sendNotifications();
         return true;
     }
     return false;
@@ -606,7 +618,7 @@ bool AccessControl::removeImpl(const UUID & id, bool throw_if_not_exists)
 {
     bool removed = MultipleAccessStorage::removeImpl(id, throw_if_not_exists);
     if (removed)
-        changes_notifier->sendNotifications();
+        sendNotifications();
     return removed;
 }
 
@@ -614,13 +626,41 @@ bool AccessControl::updateImpl(const UUID & id, const UpdateFunc & update_func, 
 {
     bool updated = MultipleAccessStorage::updateImpl(id, update_func, throw_if_not_exists);
     if (updated)
-        changes_notifier->sendNotifications();
+        sendNotifications();
     return updated;
 }
 
 AccessChangesNotifier & AccessControl::getChangesNotifier()
 {
     return *changes_notifier;
+}
+
+scope_guard AccessControl::deferNotificationsForRemove()
+{
+    ++notification_deferrals[this].depth;
+    return [this]
+    {
+        auto it = notification_deferrals.find(this);
+        chassert(it != notification_deferrals.end());
+        chassert(it->second.depth != 0);
+        if (--it->second.depth != 0)
+            return;
+
+        const bool pending = it->second.pending;
+        notification_deferrals.erase(it);
+        if (pending)
+            changes_notifier->sendNotifications();
+    };
+}
+
+void AccessControl::sendNotifications()
+{
+    if (auto it = notification_deferrals.find(this); it != notification_deferrals.end())
+    {
+        it->second.pending = true;
+        return;
+    }
+    changes_notifier->sendNotifications();
 }
 
 
@@ -697,7 +737,7 @@ See also /etc/clickhouse-server/users.xml on the server where ClickHouse is inst
 void AccessControl::restoreFromBackup(RestorerFromBackup & restorer, const String & data_path_in_backup)
 {
     MultipleAccessStorage::restoreFromBackup(restorer, data_path_in_backup);
-    restorer.addDataRestoreTaskFinalizer([this] { changes_notifier->sendNotifications(); });
+    restorer.addDataRestoreTaskFinalizer([this] { sendNotifications(); });
 }
 
 void AccessControl::setExternalAuthenticatorsConfig(const Poco::Util::AbstractConfiguration & config)

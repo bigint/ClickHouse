@@ -1,11 +1,12 @@
 #pragma once
 
-#include <Access/IAccessEntity.h>
 #include <Access/AuthenticationData.h>
+#include <Access/IAccessEntity.h>
 #include <Core/Types.h>
+#include <Interpreters/ClientInfo.h>
+#include <base/scope_guard.h>
 #include <Common/SettingsChanges.h>
 #include <Common/callOnce.h>
-#include <Interpreters/ClientInfo.h>
 
 #include <functional>
 #include <optional>
@@ -240,6 +241,7 @@ public:
     [[noreturn]] static void throwNotFound(AccessEntityType type, const String & name, const String & storage_name);
 
 protected:
+    virtual scope_guard deferNotificationsForRemove() { return {}; }
     virtual std::optional<UUID> findImpl(AccessEntityType type, const String & name) const = 0;
     virtual std::vector<UUID> findAllImpl(AccessEntityType type) const = 0;
     virtual std::vector<UUID> findAllImpl() const;
