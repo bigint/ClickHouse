@@ -39,20 +39,36 @@ private:
     using SingleQuota = EnabledQuota::SingleQuota;
     using Quotas = EnabledQuota::Quotas;
 
+    struct IntervalsStore
+    {
+        IntervalsStore(const QuotaPtr & quota_, const UUID & quota_id_);
+
+        void setQuota(const QuotaPtr & quota_, const UUID & quota_id_);
+        boost::shared_ptr<const Intervals> getOrBuildIntervals(const String & key);
+        void appendUsage(std::vector<QuotaUsage> & all_usage, std::chrono::system_clock::time_point current_time) const;
+
+    private:
+        boost::shared_ptr<const Intervals> rebuildIntervals(const String & key, std::chrono::system_clock::time_point current_time)
+            TSA_REQUIRES(mutex);
+        void rebuildAllIntervals() TSA_REQUIRES(mutex);
+
+        QuotaPtr quota TSA_GUARDED_BY(mutex);
+        UUID quota_id TSA_GUARDED_BY(mutex);
+        std::unordered_map<String, boost::shared_ptr<const Intervals>> key_to_intervals TSA_GUARDED_BY(mutex);
+        mutable std::mutex mutex;
+    };
+
     struct QuotaInfo
     {
-        QuotaInfo(const QuotaPtr & quota_, const UUID & quota_id_) { setQuota(quota_, quota_id_); }
+        QuotaInfo(const QuotaPtr & quota_, const UUID & quota_id_);
         void setQuota(const QuotaPtr & quota_, const UUID & quota_id_);
 
         String calculateKey(const EnabledQuota & enabled_quota, bool throw_if_client_key_empty) const;
-        boost::shared_ptr<const Intervals> getOrBuildIntervals(const String & key);
-        boost::shared_ptr<const Intervals> rebuildIntervals(const String & key, std::chrono::system_clock::time_point current_time);
-        void rebuildAllIntervals();
 
         QuotaPtr quota;
         UUID quota_id;
         const RolesOrUsersSet * roles = nullptr;
-        std::unordered_map<String /* quota key */, boost::shared_ptr<const Intervals>> key_to_intervals;
+        std::shared_ptr<IntervalsStore> intervals_store;
     };
 
     void ensureAllQuotasRead();

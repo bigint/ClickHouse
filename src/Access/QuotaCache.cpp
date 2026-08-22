@@ -30,13 +30,37 @@ namespace ErrorCodes
     extern const int LOGICAL_ERROR;
 }
 
+QuotaCache::IntervalsStore::IntervalsStore(const QuotaPtr & quota_, const UUID & quota_id_)
+    : quota(quota_)
+    , quota_id(quota_id_)
+{
+}
+
+
+void QuotaCache::IntervalsStore::setQuota(const QuotaPtr & quota_, const UUID & quota_id_)
+{
+    std::lock_guard lock{mutex};
+    quota = quota_;
+    quota_id = quota_id_;
+    rebuildAllIntervals();
+}
+
+
+QuotaCache::QuotaInfo::QuotaInfo(const QuotaPtr & quota_, const UUID & quota_id_)
+    : quota(quota_)
+    , quota_id(quota_id_)
+    , roles(&quota->to_roles)
+    , intervals_store(std::make_shared<IntervalsStore>(quota_, quota_id_))
+{
+}
+
 
 void QuotaCache::QuotaInfo::setQuota(const QuotaPtr & quota_, const UUID & quota_id_)
 {
     quota = quota_;
     quota_id = quota_id_;
     roles = &quota->to_roles;
-    rebuildAllIntervals();
+    intervals_store->setQuota(quota_, quota_id_);
 }
 
 
@@ -161,8 +185,9 @@ String QuotaCache::QuotaInfo::calculateKey(const EnabledQuota & enabled, bool th
 }
 
 
-boost::shared_ptr<const EnabledQuota::Intervals> QuotaCache::QuotaInfo::getOrBuildIntervals(const String & key)
+boost::shared_ptr<const EnabledQuota::Intervals> QuotaCache::IntervalsStore::getOrBuildIntervals(const String & key)
 {
+    std::lock_guard lock{mutex};
     auto it = key_to_intervals.find(key);
     if (it != key_to_intervals.end())
         return it->second;
@@ -170,7 +195,7 @@ boost::shared_ptr<const EnabledQuota::Intervals> QuotaCache::QuotaInfo::getOrBui
 }
 
 
-void QuotaCache::QuotaInfo::rebuildAllIntervals()
+void QuotaCache::IntervalsStore::rebuildAllIntervals()
 {
     if (key_to_intervals.empty())
         return;
@@ -180,7 +205,8 @@ void QuotaCache::QuotaInfo::rebuildAllIntervals()
 }
 
 
-boost::shared_ptr<const EnabledQuota::Intervals> QuotaCache::QuotaInfo::rebuildIntervals(const String & key, std::chrono::system_clock::time_point current_time)
+boost::shared_ptr<const EnabledQuota::Intervals>
+QuotaCache::IntervalsStore::rebuildIntervals(const String & key, std::chrono::system_clock::time_point current_time)
 {
     auto new_intervals = boost::make_shared<Intervals>();
     new_intervals->quota_name = quota->getName();
@@ -239,6 +265,18 @@ boost::shared_ptr<const EnabledQuota::Intervals> QuotaCache::QuotaInfo::rebuildI
     }
 
     return new_intervals;
+}
+
+
+void QuotaCache::IntervalsStore::appendUsage(std::vector<QuotaUsage> & all_usage, std::chrono::system_clock::time_point current_time) const
+{
+    std::lock_guard lock{mutex};
+    for (const auto & intervals : key_to_intervals | boost::adaptors::map_values)
+    {
+        auto usage = intervals->getUsage(current_time);
+        if (usage)
+            all_usage.push_back(std::move(usage).value());
+    }
 }
 
 
@@ -401,21 +439,15 @@ void QuotaCache::chooseQuotaToConsumeFor(EnabledQuota & enabled, bool throw_if_c
 
         String key = info.calculateKey(enabled, throw_if_client_key_empty);
         auto single = std::make_unique<SingleQuota>();
-        single->intervals = info.getOrBuildIntervals(key);
+        single->intervals = info.intervals_store->getOrBuildIntervals(key);
 
         /// For NORMALIZED_QUERY_HASH keyed quotas, set up a resolver callback
         /// so that EnabledQuota can lazily resolve intervals per query hash.
         if (info.quota->key_type == QuotaKeyType::NORMALIZED_QUERY_HASH)
         {
-            UUID found_quota_id = info.quota_id;
-            single->interval_resolver = [this, found_quota_id](const String & hash_key) -> boost::shared_ptr<const Intervals>
-            {
-                std::lock_guard lock(mutex);
-                auto it = all_quotas.find(found_quota_id);
-                if (it == all_quotas.end())
-                    return nullptr;
-                return it->second.getOrBuildIntervals(hash_key);
-            };
+            auto intervals_store = info.intervals_store;
+            single->interval_resolver
+                = [intervals_store](const String & hash_key) { return intervals_store->getOrBuildIntervals(hash_key); };
         }
 
         new_quotas->push_back(std::move(single));
@@ -435,14 +467,7 @@ std::vector<QuotaUsage> QuotaCache::getAllQuotasUsage() const
     std::vector<QuotaUsage> all_usage;
     auto current_time = std::chrono::system_clock::now();
     for (const auto & info : all_quotas | boost::adaptors::map_values)
-    {
-        for (const auto & intervals : info.key_to_intervals | boost::adaptors::map_values)
-        {
-            auto usage = intervals->getUsage(current_time);
-            if (usage)
-                all_usage.push_back(std::move(usage).value());
-        }
-    }
+        info.intervals_store->appendUsage(all_usage, current_time);
     return all_usage;
 }
 
