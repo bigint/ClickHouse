@@ -545,6 +545,7 @@ std::shared_ptr<const EnabledMaskingPolicies> ContextAccess::getEnabledMaskingPo
 RowPolicyFilterPtr ContextAccess::getRowPolicyFilter(const String & database, const String & table_name, RowPolicyFilterType filter_type) const
 {
     RowPolicyFilterPtr filter;
+    LoggerPtr logger;
 
     {
         std::lock_guard lock{mutex};
@@ -563,6 +564,8 @@ RowPolicyFilterPtr ContextAccess::getRowPolicyFilter(const String & database, co
             /// with the same name.
             filter = row_policies_of_initial_user->getFilter(database, table_name, filter_type, filter);
         }
+
+        logger = trace_log;
     }
 
     if (filter)
@@ -583,7 +586,7 @@ RowPolicyFilterPtr ContextAccess::getRowPolicyFilter(const String & database, co
                 filter->isAlwaysTrue() ? ", no filters will be used" :
                 (filter->isAlwaysFalse() ? ", no rows will be shown" : "");
 
-            LOG_TRACE(trace_log, "{}: Table {}.{} has row policies, but none of them are for the current user{}",
+            LOG_TRACE(logger, "{}: Table {}.{} has row policies, but none of them are for the current user{}",
                       getUserName(), backQuoteIfNeed(database), backQuoteIfNeed(table_name), filter_info);
         }
     }

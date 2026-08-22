@@ -204,8 +204,7 @@ private:
     mutable std::atomic<bool> user_was_dropped = false;
 
     mutable std::mutex mutex;
-    /// TODO: Fix race
-    mutable LoggerPtr trace_log;
+    mutable LoggerPtr trace_log TSA_GUARDED_BY(mutex);
     mutable UserPtr user TSA_GUARDED_BY(mutex);
     mutable String user_name TSA_GUARDED_BY(mutex);
     mutable scope_guard subscription_for_user_change TSA_GUARDED_BY(mutex);
