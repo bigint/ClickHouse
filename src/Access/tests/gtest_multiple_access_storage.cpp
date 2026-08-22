@@ -331,6 +331,23 @@ TEST(MultipleAccessStorage, ReplaceRejectsCollisionsInDifferentStorages)
     EXPECT_EQ(lower_priority_storage->read<User>(conflicting_id)->getName(), "old_name");
 }
 
+TEST(MultipleAccessStorage, CachedStorageDoesNotOverrideHigherPriorityStorage)
+{
+    AccessChangesNotifier notifier;
+    auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", notifier, true);
+    auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", notifier, true);
+    const auto id = UUIDHelpers::generateV4();
+    lower_priority_storage->insert(id, makeUser("lower_priority_user"), false, true);
+
+    MultipleAccessStorage storage;
+    storage.setStorages({higher_priority_storage, lower_priority_storage});
+    EXPECT_EQ(storage.read<User>(id)->getName(), "lower_priority_user");
+
+    higher_priority_storage->insert(id, makeUser("higher_priority_user"), false, true);
+    EXPECT_EQ(storage.read<User>(id)->getName(), "higher_priority_user");
+    EXPECT_EQ(storage.getStorage(id), higher_priority_storage);
+}
+
 TEST(MultipleAccessStorage, MovePreservesReferencesToMovedEntity)
 {
     AccessChangesNotifier notifier;

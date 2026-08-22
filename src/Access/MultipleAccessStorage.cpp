@@ -169,12 +169,21 @@ StoragePtr MultipleAccessStorage::findStorage(const UUID & id)
         std::lock_guard lock{mutex};
         from_cache = ids_cache.get(id);
     }
-    if (from_cache && from_cache->exists(id))
-        return from_cache;
 
     auto storages = getStoragesInternal();
     for (const auto & storage : *storages)
     {
+        /// A higher-priority storage can acquire the same ID after a lower-priority
+        /// storage was cached, for example during a configuration reload. Check all
+        /// storages preceding the cached one before using it.
+        if (storage == from_cache)
+        {
+            if (storage->exists(id))
+                return storage;
+            from_cache.reset();
+            continue;
+        }
+
         if (storage->exists(id))
         {
             std::lock_guard lock{mutex};
