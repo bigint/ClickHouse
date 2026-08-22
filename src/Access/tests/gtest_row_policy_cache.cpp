@@ -10,6 +10,13 @@
 
 using namespace DB;
 
+TEST(EnabledRowPolicies, DefaultConstructionHasEmptyFilters)
+{
+    EnabledRowPolicies enabled_policies;
+
+    EXPECT_FALSE(enabled_policies.getFilter("database", "table", RowPolicyFilterType::SELECT_FILTER));
+}
+
 TEST(RowPolicyCache, InvalidRestrictiveFilterFailsClosed)
 {
     AccessControl access_control;

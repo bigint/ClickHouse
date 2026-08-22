@@ -2,6 +2,7 @@
 #include <Parsers/makeASTForLogicalFunction.h>
 #include <boost/range/adaptor/map.hpp>
 #include <boost/range/algorithm/copy.hpp>
+#include <boost/smart_ptr/make_shared.hpp>
 
 
 namespace DB
@@ -24,12 +25,15 @@ size_t EnabledRowPolicies::Hash::operator()(const MixedFiltersKey & key) const
     return std::hash<std::string_view>{}(key.database) - std::hash<std::string_view>{}(key.table_name) + static_cast<size_t>(key.filter_type);
 }
 
-EnabledRowPolicies::EnabledRowPolicies() : params()
+EnabledRowPolicies::EnabledRowPolicies()
+    : EnabledRowPolicies(Params{})
 {
 }
 
-EnabledRowPolicies::EnabledRowPolicies(const Params & params_) : params(params_)
+EnabledRowPolicies::EnabledRowPolicies(const Params & params_)
+    : params(params_)
 {
+    mixed_filters.store(boost::make_shared<const MixedFiltersMap>());
 }
 
 EnabledRowPolicies::~EnabledRowPolicies() = default;
