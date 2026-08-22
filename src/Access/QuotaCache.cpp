@@ -349,7 +349,7 @@ std::shared_ptr<const EnabledQuota> QuotaCache::getEnabledQuota(
 
     auto res = std::shared_ptr<EnabledQuota>(new EnabledQuota(params));
     enabled_quotas.emplace(std::move(params), res);
-    chooseQuotaToConsumeFor(*res);
+    res->quotas.store(calculateQuotasToConsumeFor(*res));
     return res;
 }
 
@@ -443,6 +443,8 @@ void QuotaCache::chooseQuotaToConsume()
 
     ProfileEvents::increment(ProfileEvents::QuotaCacheRecalculations);
     Stopwatch watch;
+    std::vector<std::pair<std::shared_ptr<EnabledQuota>, boost::shared_ptr<const Quotas>>> recalculated;
+    recalculated.reserve(enabled_quotas.size());
     for (auto i = enabled_quotas.begin(), e = enabled_quotas.end(); i != e;)
     {
         auto elem = i->second.lock();
@@ -450,10 +452,13 @@ void QuotaCache::chooseQuotaToConsume()
             i = enabled_quotas.erase(i);
         else
         {
-            chooseQuotaToConsumeFor(*elem);
+            recalculated.emplace_back(elem, calculateQuotasToConsumeFor(*elem));
             ++i;
         }
     }
+
+    for (const auto & [enabled, quotas] : recalculated)
+        enabled->quotas.store(quotas);
 
     const auto elapsed_ms = watch.elapsedMilliseconds();
     ProfileEvents::increment(ProfileEvents::QuotaCacheRecalculationMicroseconds, watch.elapsedMicroseconds());
@@ -464,7 +469,7 @@ void QuotaCache::chooseQuotaToConsume()
         LOG_TRACE(getLogger("QuotaCache"), "Re-chose quotas for {} enabled set(s) over {} quotas in {} ms", enabled_quotas.size(), all_quotas.size(), elapsed_ms);
 }
 
-void QuotaCache::chooseQuotaToConsumeFor(EnabledQuota & enabled)
+boost::shared_ptr<const QuotaCache::Quotas> QuotaCache::calculateQuotasToConsumeFor(const EnabledQuota & enabled)
 {
     /// `mutex` is already locked.
 
@@ -492,10 +497,10 @@ void QuotaCache::chooseQuotaToConsumeFor(EnabledQuota & enabled)
         new_quotas->push_back(std::move(single));
     }
 
-    /// Publish the complete quota state in one atomic operation. Readers must not use a separate
-    /// empty flag because it cannot be updated atomically with this pointer: when an empty set
-    /// becomes non-empty, such a flag can briefly make a concurrent query skip the new quota.
-    enabled.quotas.store(new_quotas);
+    /// The caller publishes this complete quota state in one atomic operation. Readers must not use
+    /// a separate empty flag because it cannot be updated atomically with this pointer: when an empty
+    /// set becomes non-empty, such a flag can briefly make a concurrent query skip the new quota.
+    return new_quotas;
 }
 
 

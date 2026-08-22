@@ -10,6 +10,7 @@
 #include <Core/UUID.h>
 #include <Common/Exception.h>
 
+#include <utility>
 
 using namespace DB;
 
@@ -284,6 +285,47 @@ TEST(QuotaCache, PreservesClientKeyPolicyAcrossCacheAndReload)
 
     ASSERT_EQ(authentication_quota->getAllUsage().size(), 1u);
     EXPECT_EQ(authentication_quota->getAllUsage().front().quota_name, "renamed_client_key_quota");
+}
+
+TEST(QuotaCache, FailedBatchRefreshDoesNotPublishPartialResults)
+{
+    AccessControl access_control;
+    auto storage = std::make_shared<MemoryAccessStorage>("memory", access_control.getChangesNotifier(), true);
+    access_control.setStorages({storage});
+
+    auto quota = std::make_shared<Quota>();
+    quota->setName("original");
+    quota->key_type = QuotaKeyType::USER_NAME;
+    quota->to_roles = RolesOrUsersSet::AllTag{};
+    auto & limits = quota->all_limits.emplace_back();
+    limits.duration = std::chrono::minutes(1);
+    limits.max[static_cast<size_t>(QuotaType::QUERIES)] = 10;
+    const auto quota_id = access_control.insert(quota);
+
+    UUID first_user_id = UUIDHelpers::generateV4();
+    UUID second_user_id = UUIDHelpers::generateV4();
+    if (second_user_id < first_user_id)
+        std::swap(first_user_id, second_user_id);
+
+    const auto address = std::make_shared<Poco::Net::IPAddress>("127.0.0.1");
+    auto first_enabled_quota = access_control.getEnabledQuota(first_user_id, "first", {}, address, "", "key");
+    auto second_enabled_quota = access_control.getEnabledQuota(second_user_id, "second", {}, address, "", "");
+
+    storage->update(
+        quota_id,
+        [](const AccessEntityPtr & entity, const UUID &)
+        {
+            auto updated = std::static_pointer_cast<Quota>(entity->clone());
+            updated->setName("updated");
+            updated->key_type = QuotaKeyType::CLIENT_KEY;
+            return updated;
+        });
+    access_control.getChangesNotifier().sendNotifications();
+
+    ASSERT_EQ(first_enabled_quota->getAllUsage().size(), 1u);
+    EXPECT_EQ(first_enabled_quota->getAllUsage().front().quota_name, "original");
+    ASSERT_EQ(second_enabled_quota->getAllUsage().size(), 1u);
+    EXPECT_EQ(second_enabled_quota->getAllUsage().front().quota_name, "original");
 }
 
 TEST(QuotaCache, QuotaChangesResolveCompositeOwner)

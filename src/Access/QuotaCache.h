@@ -76,7 +76,7 @@ private:
     void quotaRemoved(const UUID & quota_id) TSA_REQUIRES(mutex);
     void chooseQuotaToConsumeIfNeeded() TSA_REQUIRES(mutex);
     void chooseQuotaToConsume() TSA_REQUIRES(mutex);
-    void chooseQuotaToConsumeFor(EnabledQuota & enabled_quota) TSA_REQUIRES(mutex);
+    boost::shared_ptr<const Quotas> calculateQuotasToConsumeFor(const EnabledQuota & enabled_quota) TSA_REQUIRES(mutex);
 
     const AccessControl & access_control;
     mutable std::mutex mutex;
