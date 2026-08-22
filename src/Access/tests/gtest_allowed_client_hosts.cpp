@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <Access/Common/AllowedClientHosts.h>
+#include <Common/Exception.h>
 
 
 using namespace DB;
@@ -48,4 +49,12 @@ TEST(AllowedClientHosts, IPv4WildcardsMatchAddressText)
     EXPECT_FALSE(hosts.contains(AllowedClientHosts::IPAddress{"198.51.200.3"}));
     EXPECT_TRUE(hosts.contains(AllowedClientHosts::IPAddress{"192.0.2.4"}));
     EXPECT_TRUE(hosts.contains(AllowedClientHosts::IPAddress{"::ffff:192.168.15.2"}));
+}
+
+TEST(AllowedClientHosts, RejectsInvalidNameRegexpEagerly)
+{
+    AllowedClientHosts hosts;
+
+    EXPECT_THROW(hosts.addNameRegexp("["), Exception);
+    EXPECT_TRUE(hosts.empty());
 }

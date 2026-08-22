@@ -18,6 +18,7 @@ namespace DB
 {
 namespace ErrorCodes
 {
+    extern const int BAD_ARGUMENTS;
     extern const int DNS_ERROR;
 }
 
@@ -338,8 +339,24 @@ void AllowedClientHosts::addNameRegexp(const String & name_regexp)
         local_host = true;
     else if (name_regexp == ".*")
         any_host = true;
-    else if (std::ranges::find(name_regexps, name_regexp) == name_regexps.end())
-        name_regexps.push_back(name_regexp);
+    else
+    {
+        try
+        {
+            Poco::RegularExpression{name_regexp};
+        }
+        catch (const Poco::Exception & e)
+        {
+            throw Exception(
+                ErrorCodes::BAD_ARGUMENTS,
+                "Invalid allowed-host regular expression '{}': {}",
+                name_regexp,
+                e.displayText());
+        }
+
+        if (std::ranges::find(name_regexps, name_regexp) == name_regexps.end())
+            name_regexps.push_back(name_regexp);
+    }
 }
 
 void AllowedClientHosts::removeNameRegexp(const String & name_regexp)
