@@ -54,6 +54,20 @@ TEST(AuthenticationData, ScramPasswordHashMustHaveSHA256Length)
     EXPECT_THROW(authentication_data.setPasswordHashBinary(AuthenticationData::Digest(33), std::nullopt, false), Exception);
 }
 
+TEST(AuthenticationData, InvalidHashDoesNotChangeSecondFactor)
+{
+    AuthenticationData authentication_data{AuthenticationType::SCRAM_SHA256_PASSWORD};
+    authentication_data.setPasswordHashBinary(
+        AuthenticationData::Digest(32), OneTimePasswordSecret{"JBSWY3DPEHPK3PXP"}, true);
+    const auto original = authentication_data;
+
+    EXPECT_THROW(
+        authentication_data.setPasswordHashBinary(
+            AuthenticationData::Digest(31), OneTimePasswordSecret{"JBSWY3DPEHPK3PXQ"}, true),
+        Exception);
+    EXPECT_EQ(authentication_data, original);
+}
+
 TEST(Authentication, OneTimePasswordRejectsNonASCIIBytes)
 {
     const OneTimePasswordSecret secret{"JBSWY3DPEHPK3PXP"};

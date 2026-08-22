@@ -255,12 +255,17 @@ String AuthenticationData::getPasswordHashHex() const
 
 void AuthenticationData::setPasswordHashBinary(const Digest & hash, std::optional<OneTimePasswordSecret> second_factor, bool validate)
 {
-    otp_secret = std::move(second_factor);
+    auto store_hash_and_second_factor = [this, &second_factor](Digest new_hash)
+    {
+        password_hash = std::move(new_hash);
+        otp_secret = std::move(second_factor);
+    };
+
     switch (type)
     {
         case AuthenticationType::PLAINTEXT_PASSWORD:
         {
-            password_hash = hash;
+            store_hash_and_second_factor(hash);
             return;
         }
 
@@ -270,7 +275,7 @@ void AuthenticationData::setPasswordHashBinary(const Digest & hash, std::optiona
                 throw Exception(ErrorCodes::BAD_ARGUMENTS,
                                 "Password hash for the 'SHA256_PASSWORD' authentication type has length {} "
                                 "but must be exactly 32 bytes.", hash.size());
-            password_hash = hash;
+            store_hash_and_second_factor(hash);
             return;
         }
 
@@ -280,7 +285,7 @@ void AuthenticationData::setPasswordHashBinary(const Digest & hash, std::optiona
                 throw Exception(ErrorCodes::BAD_ARGUMENTS,
                                 "Password hash for the 'SCRAM_SHA256_PASSWORD' authentication type has length {} "
                                 "but must be exactly 32 bytes.", hash.size());
-            password_hash = hash;
+            store_hash_and_second_factor(hash);
             return;
         }
 
@@ -290,7 +295,7 @@ void AuthenticationData::setPasswordHashBinary(const Digest & hash, std::optiona
                 throw Exception(ErrorCodes::BAD_ARGUMENTS,
                                 "Password hash for the 'DOUBLE_SHA1_PASSWORD' authentication type has length {} "
                                 "but must be exactly 20 bytes.", hash.size());
-            password_hash = hash;
+            store_hash_and_second_factor(hash);
             return;
         }
 
@@ -318,8 +323,7 @@ void AuthenticationData::setPasswordHashBinary(const Digest & hash, std::optiona
             }
 #endif
 
-            password_hash = hash;
-            password_hash.resize(64);
+            store_hash_and_second_factor(std::move(resized));
             return;
         }
 
