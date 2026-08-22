@@ -775,6 +775,16 @@ INSTANTIATE_TEST_SUITE_P(ParserCreateMaskingPolicyQuery, ParserTest,
         }
 })));
 
+INSTANTIATE_TEST_SUITE_P(ParserAlterMaskingPolicyQuery, ParserTest,
+    ::testing::Combine(
+        ::testing::Values(std::make_shared<ParserCreateMaskingPolicy>()),
+        ::testing::ValuesIn(std::initializer_list<ParserTestCase>{
+        {
+            "ALTER MASKING POLICY p ON db.t PRIORITY 0",
+            "ALTER MASKING POLICY p ON db.t PRIORITY 0"
+        }
+})));
+
 INSTANTIATE_TEST_SUITE_P(ParserRenameQuery, ParserTest,
     ::testing::Combine(
         ::testing::Values(std::make_shared<ParserRenameQuery>()),

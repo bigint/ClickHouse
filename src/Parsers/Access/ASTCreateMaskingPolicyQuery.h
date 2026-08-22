@@ -43,6 +43,7 @@ public:
     ASTPtr where_condition;
 
     Int64 priority{};
+    bool has_priority = false;
 
     String getID(char) const override;
     ASTPtr clone() const override;

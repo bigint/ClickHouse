@@ -235,6 +235,7 @@ bool ParserCreateMaskingPolicy::parseImpl(Pos & pos, ASTPtr & node, Expected & e
     query->where_condition = std::move(where_condition);
     query->roles = std::move(roles);
     query->priority = priority;
+    query->has_priority = has_priority;
     query->storage_name = std::move(storage_name);
 
     return true;
