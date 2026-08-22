@@ -90,6 +90,8 @@ public:
 
     struct Util
     {
+        static constexpr int SCRAM_SHA256_ITERATIONS = 4096;
+
         static String digestToString(const Digest & text) { return String(text.data(), text.data() + text.size()); }
         static Digest stringToDigest(std::string_view text) { return Digest(text.data(), text.data() + text.size()); }
         static Digest encodeSHA256(std::string_view text);

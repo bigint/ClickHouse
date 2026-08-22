@@ -67,7 +67,7 @@ AuthenticationData::Digest AuthenticationData::Util::encodeScramSHA256(std::stri
     std::vector<uint8_t> salt_digest;
     for (auto elem : base64Decode(String(salt)))
         salt_digest.push_back(elem);
-    auto salted_password = pbkdf2SHA256(password, salt_digest, 4096);
+    auto salted_password = pbkdf2SHA256(password, salt_digest, SCRAM_SHA256_ITERATIONS);
     return salted_password;
 #else
     throw Exception(ErrorCodes::SUPPORT_IS_DISABLED, "SCRAM SHA256 passwords support is disabled, because ClickHouse was built without SSL library");

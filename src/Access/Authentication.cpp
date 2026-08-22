@@ -113,6 +113,8 @@ namespace
     {
         if (authentication_method.getType() != AuthenticationType::SCRAM_SHA256_PASSWORD)
             return false;
+        if (scram_sha256_credentials->getIterations() != Util::SCRAM_SHA256_ITERATIONS)
+            return false;
 
         const auto & client_proof = scram_sha256_credentials->getClientProof();
         const auto & auth_message = scram_sha256_credentials->getAuthMessage();

@@ -89,7 +89,8 @@ TEST(Authentication, ScramCredentialsRejectOtherAuthenticationTypes)
     for (size_t i = 0; i != client_key.size(); ++i)
         client_proof[i] = client_key[i] ^ client_signature[i];
 
-    ScramSHA256Credentials credentials{"user", base64Encode(client_proof), auth_message, 4096};
+    ScramSHA256Credentials credentials{
+        "user", base64Encode(client_proof), auth_message, AuthenticationData::Util::SCRAM_SHA256_ITERATIONS};
     AuthenticationData no_authentication{AuthenticationType::NO_AUTHENTICATION};
     ExternalAuthenticators external_authenticators;
     ClientInfo client_info;
@@ -119,9 +120,9 @@ TEST(Authentication, ScramCredentialsCompareCompleteProof)
     ClientInfo client_info;
     SettingsChanges settings;
 
-    auto check = [&](String proof)
+    auto check = [&](String proof, int iterations = AuthenticationData::Util::SCRAM_SHA256_ITERATIONS)
     {
-        ScramSHA256Credentials credentials{"user", proof, auth_message, 4096};
+        ScramSHA256Credentials credentials{"user", proof, auth_message, iterations};
         return Authentication::areCredentialsValid(
             credentials, authentication_data, external_authenticators, client_info, settings);
     };
@@ -135,5 +136,7 @@ TEST(Authentication, ScramCredentialsCompareCompleteProof)
     String wrong_last_byte = encoded_proof;
     wrong_last_byte.back() ^= 1;
     EXPECT_EQ(check(wrong_last_byte), Authentication::CredentialsCheckResult::Fail);
+
+    EXPECT_EQ(check(encoded_proof, 1), Authentication::CredentialsCheckResult::Fail);
 }
 #endif

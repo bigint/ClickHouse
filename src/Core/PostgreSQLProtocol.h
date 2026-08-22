@@ -16,6 +16,7 @@
 #include <Parsers/ParserPreparedStatement.h>
 #include <Poco/RandomStream.h>
 #include <Poco/SHA1Engine.h>
+#include <Access/AuthenticationData.h>
 #include <Access/Credentials.h>
 #include <algorithm>
 #include <unordered_map>
@@ -1618,7 +1619,7 @@ public:
         Messaging::MessageTransport & mt,
         const Poco::Net::SocketAddress & address) override
     {
-        static constexpr int num_iterations = 4096;
+        static constexpr int num_iterations = AuthenticationData::Util::SCRAM_SHA256_ITERATIONS;
 
         String auth_message;
 
