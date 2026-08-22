@@ -24,6 +24,8 @@
 #include <Common/callOnce.h>
 #include <Common/quoteString.h>
 
+#include <exception>
+
 
 namespace DB
 {
@@ -396,7 +398,14 @@ std::vector<UUID> IAccessStorage::remove(const std::vector<UUID> & ids, bool thr
     {
         /// Even on failure, clean up references for the entities we did remove so the
         /// access state on disk does not retain dangling UUIDs.
-        cleanup_removed_references();
+        try
+        {
+            cleanup_removed_references();
+        }
+        catch (...)
+        {
+            e.addMessage("Dependency cleanup also failed: {}", getCurrentExceptionMessage(/* with_stacktrace= */ false));
+        }
 
         /// Try to add more information to the error message.
         if (!removed_names.empty())
@@ -414,8 +423,16 @@ std::vector<UUID> IAccessStorage::remove(const std::vector<UUID> & ids, bool thr
     }
     catch (...)
     {
-        cleanup_removed_references();
-        throw;
+        auto original_exception = std::current_exception();
+        try
+        {
+            cleanup_removed_references();
+        }
+        catch (...)
+        {
+            tryLogCurrentException(getLogger(), "while cleaning dependencies after a batch removal failure");
+        }
+        std::rethrow_exception(original_exception);
     }
 
     cleanup_removed_references();
@@ -443,6 +460,13 @@ void IAccessStorage::removeReferencesToRemovedIDs(const std::unordered_set<UUID>
         return new_entity;
     };
 
+    std::exception_ptr first_cleanup_error;
+    auto remember_cleanup_error = [&]
+    {
+        if (!first_cleanup_error)
+            first_cleanup_error = std::current_exception();
+    };
+
     /// Any access entity type can reference any other (e.g. a user references roles, a
     /// settings profile references roles/users, a row policy references roles/users, etc.),
     /// so we walk every type. Iteration is O(N) where N is the total number of access
@@ -456,6 +480,7 @@ void IAccessStorage::removeReferencesToRemovedIDs(const std::unordered_set<UUID>
         }
         catch (...)
         {
+            remember_cleanup_error();
             tryLogCurrentException(getLogger(), "while listing access entities for dependency cleanup");
             continue;
         }
@@ -487,16 +512,21 @@ void IAccessStorage::removeReferencesToRemovedIDs(const std::unordered_set<UUID>
                 /// will be reconciled on the next reload. Don't fail the whole cascade.
                 if (e.code() == ErrorCodes::ACCESS_STORAGE_READONLY)
                     continue;
+                remember_cleanup_error();
                 tryLogCurrentException(getLogger(),
                     "while removing references to dropped access entities from " + outputID(dependent_id));
             }
             catch (...)
             {
+                remember_cleanup_error();
                 tryLogCurrentException(getLogger(),
                     "while removing references to dropped access entities from " + outputID(dependent_id));
             }
         }
     }
+
+    if (first_cleanup_error)
+        std::rethrow_exception(first_cleanup_error);
 }
 
 

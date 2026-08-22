@@ -40,6 +40,7 @@ public:
 
     UUID insertEntity(const AccessEntityPtr & entity) { return memory_storage.insert(entity); }
     void setThrowID(const UUID & id) { throw_id = id; }
+    void setThrowUpdateID(const UUID & id) { throw_update_id = id; }
 
     bool exists(const UUID & id) const override { return memory_storage.exists(id); }
 
@@ -58,12 +59,15 @@ protected:
     }
     bool updateImpl(const UUID & id, const UpdateFunc & update_func, bool throw_if_not_exists) override
     {
+        if (id == throw_update_id)
+            throw std::runtime_error("update failed");
         return memory_storage.update(id, update_func, throw_if_not_exists);
     }
 
 private:
     MemoryAccessStorage memory_storage;
     UUID throw_id = UUIDHelpers::Nil;
+    UUID throw_update_id = UUIDHelpers::Nil;
 };
 
 template <typename Entity>
@@ -162,4 +166,54 @@ TEST(IAccessStorage, BatchRemovalCleansDependenciesAfterStandardException)
     EXPECT_FALSE(storage.exists(removed_role_id));
     EXPECT_TRUE(storage.exists(retained_role_id));
     EXPECT_FALSE(storage.read<User>(user_id)->granted_roles.isGranted(removed_role_id));
+}
+
+TEST(IAccessStorage, DependencyCleanupPropagatesAfterBestEffort)
+{
+    AccessChangesNotifier notifier;
+    ThrowingRemoveAccessStorage storage(notifier);
+
+    const auto role_id = storage.insertEntity(makeEntity<Role>("role"));
+
+    auto failing_user = std::make_shared<User>();
+    failing_user->setName("failing_user");
+    failing_user->granted_roles.grant(role_id);
+    const auto failing_user_id = storage.insertEntity(failing_user);
+    storage.setThrowUpdateID(failing_user_id);
+
+    auto cleaned_user = std::make_shared<User>();
+    cleaned_user->setName("cleaned_user");
+    cleaned_user->granted_roles.grant(role_id);
+    const auto cleaned_user_id = storage.insertEntity(cleaned_user);
+
+    EXPECT_THROW(storage.remove(role_id), std::runtime_error);
+    EXPECT_FALSE(storage.exists(role_id));
+    EXPECT_TRUE(storage.read<User>(failing_user_id)->granted_roles.isGranted(role_id));
+    EXPECT_FALSE(storage.read<User>(cleaned_user_id)->granted_roles.isGranted(role_id));
+}
+
+TEST(IAccessStorage, CleanupFailureDoesNotMaskBatchRemovalFailure)
+{
+    AccessChangesNotifier notifier;
+    ThrowingRemoveAccessStorage storage(notifier);
+
+    const auto removed_role_id = storage.insertEntity(makeEntity<Role>("removed_role"));
+    const auto retained_role_id = storage.insertEntity(makeEntity<Role>("retained_role"));
+    storage.setThrowID(retained_role_id);
+
+    auto user = std::make_shared<User>();
+    user->setName("user");
+    user->granted_roles.grant(removed_role_id);
+    const auto user_id = storage.insertEntity(user);
+    storage.setThrowUpdateID(user_id);
+
+    try
+    {
+        storage.remove({removed_role_id, retained_role_id});
+        FAIL() << "Expected removal to fail";
+    }
+    catch (const std::runtime_error & e)
+    {
+        EXPECT_STREQ(e.what(), "remove failed");
+    }
 }
