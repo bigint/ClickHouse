@@ -697,11 +697,7 @@ See also /etc/clickhouse-server/users.xml on the server where ClickHouse is inst
 void AccessControl::restoreFromBackup(RestorerFromBackup & restorer, const String & data_path_in_backup)
 {
     MultipleAccessStorage::restoreFromBackup(restorer, data_path_in_backup);
-
-    /// The access restore task added above runs concurrently with other tasks in the current
-    /// data-restore batch. Add a marker which schedules notification delivery for the next
-    /// batch, after every task in the current batch has finished.
-    restorer.addDataRestoreTask([this, &restorer] { restorer.addDataRestoreTask([this] { changes_notifier->sendNotifications(); }); });
+    restorer.addDataRestoreTaskFinalizer([this] { changes_notifier->sendNotifications(); });
 }
 
 void AccessControl::setExternalAuthenticatorsConfig(const Poco::Util::AbstractConfiguration & config)

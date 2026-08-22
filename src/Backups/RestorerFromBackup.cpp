@@ -33,6 +33,8 @@
 #include <Common/setThreadName.h>
 #include <Common/threadPoolCallbackRunner.h>
 
+#include <exception>
+
 #include <boost/algorithm/string/join.hpp>
 #include <boost/range/adaptor/map.hpp>
 
@@ -1036,25 +1038,66 @@ void RestorerFromBackup::addDataRestoreTask(DataRestoreTask && new_task)
     data_restore_tasks.push_back(std::move(new_task));
 }
 
+void RestorerFromBackup::addDataRestoreTaskFinalizer(DataRestoreTask && finalizer)
+{
+    if (current_stage != Stage::INSERTING_DATA_TO_TABLES)
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "Adding of data-restoring task finalizers is not allowed");
+
+    std::lock_guard lock{mutex};
+    data_restore_task_finalizers.push_back(std::move(finalizer));
+}
+
 void RestorerFromBackup::runDataRestoreTasks()
 {
-    /// Iterations are required here because data restore tasks are allowed to call addDataRestoreTask() and add other data restore tasks.
-    for (;;)
+    std::exception_ptr error;
+    try
     {
-        std::vector<DataRestoreTask> tasks_to_run;
+        /// Iterations are required here because data restore tasks are allowed to add other data restore tasks.
+        for (;;)
         {
-            std::lock_guard lock{mutex};
-            std::swap(tasks_to_run, data_restore_tasks);
+            std::vector<DataRestoreTask> tasks_to_run;
+            {
+                std::lock_guard lock{mutex};
+                std::swap(tasks_to_run, data_restore_tasks);
+            }
+
+            if (tasks_to_run.empty())
+                break;
+
+            for (auto & task : tasks_to_run)
+                schedule(std::move(task), ThreadName::RESTORE_TABLE_TASK);
+
+            waitFutures();
         }
-
-        if (tasks_to_run.empty())
-            break;
-
-        for (auto & task : tasks_to_run)
-            schedule(std::move(task), ThreadName::RESTORE_TABLE_TASK);
-
-        waitFutures();
     }
+    catch (...)
+    {
+        error = std::current_exception();
+        waitFutures(/* throw_if_error= */ false);
+    }
+
+    std::vector<DataRestoreTask> finalizers;
+    {
+        std::lock_guard lock{mutex};
+        std::swap(finalizers, data_restore_task_finalizers);
+    }
+    for (auto & finalizer : finalizers)
+    {
+        try
+        {
+            std::move(finalizer)();
+        }
+        catch (...)
+        {
+            if (!error)
+                error = std::current_exception();
+            else
+                tryLogCurrentException(log, "while running a data-restoring task finalizer");
+        }
+    }
+
+    if (error)
+        std::rethrow_exception(error);
 }
 
 void RestorerFromBackup::finalizeTables()

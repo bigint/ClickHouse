@@ -59,9 +59,12 @@ public:
     ContextMutablePtr getContext() const { return context; }
     const ZooKeeperRetriesInfo & getZooKeeperRetriesInfo() const { return zookeeper_retries_info; }
 
-    /// Adds a data restore task which will be later returned by getDataRestoreTasks().
-    /// This function can be called by implementations of IStorage::restoreFromBackup() in inherited storage classes.
+    /// Adds a task to run while restoring data.
+    /// This function can be called by implementations of `IStorage::restoreFromBackup` in inherited storage classes.
     void addDataRestoreTask(DataRestoreTask && new_task);
+
+    /// Adds a finalizer which runs after all active data restore tasks finish, including when a task fails.
+    void addDataRestoreTaskFinalizer(DataRestoreTask && finalizer);
 
     /// Returns the list of access entities to restore.
     AccessEntitiesToRestore getAccessEntitiesToRestore(const String & data_path_in_backup) const;
@@ -119,6 +122,7 @@ private:
     String current_stage;
 
     std::vector<DataRestoreTask> data_restore_tasks TSA_GUARDED_BY(mutex);
+    std::vector<DataRestoreTask> data_restore_task_finalizers TSA_GUARDED_BY(mutex);
     std::unique_ptr<AccessRestorerFromBackup> access_restorer TSA_GUARDED_BY(mutex);
 
     /// Databases skipped during restore because they use external engines
