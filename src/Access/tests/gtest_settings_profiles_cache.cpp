@@ -33,6 +33,7 @@ TEST(SettingsProfileElement, CastsDisallowedValuesWithoutOverwritingValue)
 
 TEST(SettingsProfileElement, MapDisallowedValueRoundTripsThroughAST)
 {
+    AccessControl access_control;
     SettingsProfileElement original;
     original.setting_name = "http_response_headers";
     original.disallowed_values = {Field{Map{Tuple{String{"X-Test"}, String{"value"}}}}};
@@ -43,6 +44,12 @@ TEST(SettingsProfileElement, MapDisallowedValueRoundTripsThroughAST)
 
     const SettingsProfileElement restored{*ast};
     EXPECT_EQ(restored.disallowed_values, original.disallowed_values);
+
+    const auto named_ast = original.toASTWithNames(access_control);
+    ASSERT_EQ(named_ast->disallowed_values.size(), 1);
+    EXPECT_EQ(named_ast->disallowed_values.front().getType(), Field::Types::String);
+    const SettingsProfileElement restored_from_named_ast{*named_ast, access_control};
+    EXPECT_EQ(restored_from_named_ast.disallowed_values, original.disallowed_values);
 }
 
 TEST(SettingsProfilesCache, DefaultProfileChangeRefreshesExistingEnabledSettings)
