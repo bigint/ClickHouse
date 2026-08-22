@@ -52,6 +52,39 @@ TEST_F(UsersConfigMultipleAuthTest, SinglePlaintextPassword)
     EXPECT_EQ(user->authentication_methods[0].getType(), AuthenticationType::PLAINTEXT_PASSWORD);
 }
 
+TEST(UsersConfigAccessStorage, ReplacementDeliversNotifications)
+{
+    auto initial_config = createConfigFromXML(R"(
+        <clickhouse>
+            <users>
+                <initial_user><no_password/></initial_user>
+            </users>
+        </clickhouse>
+    )");
+    auto replacement_config = createConfigFromXML(R"(
+        <clickhouse>
+            <users>
+                <replacement_user><no_password/></replacement_user>
+            </users>
+        </clickhouse>
+    )");
+
+    AccessControl access_control;
+    access_control.addUsersConfigStorage("users_config_test", *initial_config, false);
+
+    bool replacement_visible_during_notification = false;
+    auto subscription = access_control.subscribeForChanges<User>(
+        [&](const std::vector<AccessChangesNotifier::Change> & changes)
+        {
+            if (!changes.empty())
+                replacement_visible_during_notification = access_control.find<User>("replacement_user").has_value();
+        });
+
+    access_control.setUsersConfig(*replacement_config);
+
+    EXPECT_TRUE(replacement_visible_during_notification);
+}
+
 TEST_F(UsersConfigMultipleAuthTest, FlatNoPassword)
 {
     const std::string xml_config = R"(

@@ -107,11 +107,12 @@ void UsersConfigAccessStorage::load(
         preprocessed_dir,
         std::move(zk_node_cache),
         std::make_shared<Poco::Event>(),
-        [&](Poco::AutoPtr<Poco::Util::AbstractConfiguration> new_config, bool /*initial_loading*/)
+        [&](Poco::AutoPtr<Poco::Util::AbstractConfiguration> new_config, bool initial_loading)
         {
             Settings::checkNoSettingNamesAtTopLevel(*new_config, users_config_path);
             parseFromConfig(*new_config);
-            access_control.getChangesNotifier().sendNotifications();
+            if (!initial_loading)
+                access_control.getChangesNotifier().sendNotifications();
         });
 }
 

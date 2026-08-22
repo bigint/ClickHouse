@@ -331,6 +331,7 @@ void AccessControl::setUsersConfig(const Poco::Util::AbstractConfiguration & use
         if (auto users_config_storage = typeid_cast<std::shared_ptr<UsersConfigAccessStorage>>(storage))
         {
             users_config_storage->setConfig(users_config_);
+            changes_notifier->sendNotifications();
             return;
         }
     }
@@ -342,6 +343,7 @@ void AccessControl::addUsersConfigStorage(const String & storage_name_, const Po
     auto new_storage = std::make_shared<UsersConfigAccessStorage>(storage_name_, *this, allow_backup_);
     new_storage->setConfig(users_config_);
     addStorage(new_storage);
+    changes_notifier->sendNotifications();
     LOG_DEBUG(getLogger(), "Added {} access storage '{}', path: {}",
         String(new_storage->getStorageType()), new_storage->getStorageName(), new_storage->getPath());
 }
@@ -366,6 +368,7 @@ void AccessControl::addUsersConfigStorage(
     auto new_storage = std::make_shared<UsersConfigAccessStorage>(storage_name_, *this, allow_backup_);
     new_storage->load(users_config_path_, include_from_path_, preprocessed_dir_, get_zookeeper_function_);
     addStorage(new_storage);
+    changes_notifier->sendNotifications();
     LOG_DEBUG(getLogger(), "Added {} access storage '{}', path: {}", String(new_storage->getStorageType()), new_storage->getStorageName(), new_storage->getPath());
 }
 
@@ -390,6 +393,7 @@ void AccessControl::addReplicatedStorage(
         allow_backup_,
         throw_on_invalid_replicated_access_entities);
     addStorage(new_storage);
+    changes_notifier->sendNotifications();
     LOG_DEBUG(getLogger(), "Added {} access storage '{}'", String(new_storage->getStorageType()), new_storage->getStorageName());
 }
 
@@ -410,6 +414,7 @@ void AccessControl::addDiskStorage(const String & storage_name_, const String & 
     }
     auto new_storage = std::make_shared<DiskAccessStorage>(storage_name_, directory_, *changes_notifier, readonly_, allow_backup_);
     addStorage(new_storage);
+    changes_notifier->sendNotifications();
     LOG_DEBUG(getLogger(), "Added {} access storage '{}', path: {}", String(new_storage->getStorageType()), new_storage->getStorageName(), new_storage->getPath());
 }
 

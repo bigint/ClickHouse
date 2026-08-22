@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <Access/AccessChangesNotifier.h>
+#include <Access/AccessControl.h>
 #include <Access/AccessEntityIO.h>
 #include <Access/DiskAccessStorage.h>
 #include <Access/User.h>
@@ -112,4 +113,30 @@ TEST(DiskAccessStorage, LazyMaterializationDoesNotNotify)
     notifier.sendNotifications();
 
     EXPECT_EQ(delivered_changes, 0u);
+}
+
+TEST(AccessControl, DiskStorageInitialNotificationsAreDeliveredAfterAttachment)
+{
+    Poco::TemporaryFile temp_dir;
+    temp_dir.createDirectories();
+    String dir = temp_dir.path() + "/";
+
+    auto user = std::make_shared<User>();
+    user->setName("alice");
+    const auto id = UUIDHelpers::generateV4();
+    writeEntityToFile(std::filesystem::path(dir) / (toString(id) + ".sql"), *user);
+    writeNeedRebuildMarker(dir);
+
+    AccessControl access_control;
+    bool entity_visible_during_notification = false;
+    auto subscription = access_control.subscribeForChanges<User>(
+        [&](const std::vector<AccessChangesNotifier::Change> & changes)
+        {
+            if (!changes.empty())
+                entity_visible_during_notification = access_control.find<User>("alice").has_value();
+        });
+
+    access_control.addDiskStorage("test_disk", dir, /*readonly_=*/false, /*allow_backup_=*/false);
+
+    EXPECT_TRUE(entity_visible_during_notification);
 }
