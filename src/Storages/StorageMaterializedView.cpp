@@ -37,6 +37,7 @@
 #include <Core/ServerSettings.h>
 #include <Core/Settings.h>
 #include <Core/ProtocolDefines.h>
+#include <base/scope_guard.h>
 #include <Common/config_version.h>
 #include <Processors/QueryPlan/BuildQueryPipelineSettings.h>
 #include <Processors/QueryPlan/ExpressionStep.h>
@@ -136,8 +137,15 @@ StorageMaterializedView::StorageMaterializedView(
     if (storage_metadata.sql_security_type == SQLSecurityType::INVOKER)
         throw Exception(ErrorCodes::QUERY_IS_NOT_SUPPORTED_IN_MATERIALIZED_VIEW, "SQL SECURITY INVOKER can't be specified for MATERIALIZED VIEW");
 
+    scope_guard definer_dependency_cleanup;
     if (storage_metadata.sql_security_type == SQLSecurityType::DEFINER)
+    {
         DefinerDependencies::instance().addDependency(*storage_metadata.definer, table_id_);
+        definer_dependency_cleanup = [table_id_]
+        {
+            DefinerDependencies::instance().removeDependencies(table_id_);
+        };
+    }
 
     if (!query.select)
         throw Exception(ErrorCodes::INCORRECT_QUERY, "SELECT query is not specified for {}", getName());
@@ -345,6 +353,8 @@ StorageMaterializedView::StorageMaterializedView(
         else
             target_table_id = StorageID(db_name, inner_name);
     }
+
+    definer_dependency_cleanup.release();
 }
 
 QueryProcessingStage::Enum StorageMaterializedView::getQueryProcessingStage(

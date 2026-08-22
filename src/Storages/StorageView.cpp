@@ -34,6 +34,7 @@
 
 #include <Core/Defines.h>
 #include <Core/Settings.h>
+#include <base/scope_guard.h>
 
 #include <QueryPipeline/Pipe.h>
 #include <Processors/Transforms/MaterializingTransform.h>
@@ -380,8 +381,15 @@ StorageView::StorageView(
     if (query.sql_security)
         storage_metadata.setSQLSecurity(query.sql_security->as<ASTSQLSecurity &>());
 
+    scope_guard definer_dependency_cleanup;
     if (storage_metadata.sql_security_type == SQLSecurityType::DEFINER)
+    {
         DefinerDependencies::instance().addDependency(*storage_metadata.definer, table_id_);
+        definer_dependency_cleanup = [table_id_]
+        {
+            DefinerDependencies::instance().removeDependencies(table_id_);
+        };
+    }
 
     if (!query.select)
         throw Exception(ErrorCodes::INCORRECT_QUERY, "SELECT query is not specified for {}", getName());
@@ -396,6 +404,7 @@ StorageView::StorageView(
     storage_metadata.setSelectQuery(description);
     storage_metadata.setVirtuals(createVirtuals());
     setInMemoryMetadata(storage_metadata);
+    definer_dependency_cleanup.release();
 }
 
 /// Build and resolve the view's inner query tree

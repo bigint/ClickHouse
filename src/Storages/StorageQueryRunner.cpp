@@ -36,6 +36,7 @@
 #include <Common/logger_useful.h>
 #include <Common/setThreadName.h>
 #include <Common/thread_local_rng.h>
+#include <base/scope_guard.h>
 
 #include <atomic>
 #include <condition_variable>
@@ -740,12 +741,19 @@ StorageQueryRunner::StorageQueryRunner(
                 "SQL SECURITY and DEFINER have no effect in the cluster mode and cannot be used together with the 'cluster' setting of the QueryRunner engine");
 
         storage_metadata.setSQLSecurity(sql_security_->as<ASTSQLSecurity &>());
-
-        if (storage_metadata.sql_security_type == SQLSecurityType::DEFINER)
-            DefinerDependencies::instance().addDependency(*storage_metadata.definer, table_id_);
     }
     else if (cluster_name.empty())
         storage_metadata.sql_security_type = SQLSecurityType::INVOKER;
+
+    scope_guard definer_dependency_cleanup;
+    if (storage_metadata.sql_security_type == SQLSecurityType::DEFINER)
+    {
+        DefinerDependencies::instance().addDependency(*storage_metadata.definer, table_id_);
+        definer_dependency_cleanup = [table_id_]
+        {
+            DefinerDependencies::instance().removeDependencies(table_id_);
+        };
+    }
 
     setInMemoryMetadata(storage_metadata);
 
@@ -756,6 +764,7 @@ StorageQueryRunner::StorageQueryRunner(
         settings[QueryRunnerSetting::threads],
         settings[QueryRunnerSetting::max_queue_size],
         log);
+    definer_dependency_cleanup.release();
 }
 
 StorageQueryRunner::~StorageQueryRunner() = default;
