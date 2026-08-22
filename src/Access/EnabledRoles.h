@@ -38,6 +38,7 @@ public:
     using OnChangeHandler = std::function<void(const std::shared_ptr<const EnabledRolesInfo> & info)>;
 
     /// Called when either the specified roles or the roles granted to the specified roles are changed.
+    /// Destroying the returned guard cancels a queued callback and waits for a callback already running on another thread.
     scope_guard subscribeForChanges(const OnChangeHandler & handler) const;
 
 private:
@@ -52,9 +53,21 @@ private:
     std::shared_ptr<const EnabledRolesInfo> info;
     mutable std::mutex info_mutex;
 
+    struct Handler
+    {
+        explicit Handler(OnChangeHandler function_)
+            : function(std::move(function_))
+        {
+        }
+
+        OnChangeHandler function;
+        std::recursive_mutex mutex;
+        bool active TSA_GUARDED_BY(mutex) = true;
+    };
+
     struct Handlers
     {
-        std::list<OnChangeHandler> list;
+        std::list<std::shared_ptr<Handler>> list;
         std::mutex mutex;
     };
 

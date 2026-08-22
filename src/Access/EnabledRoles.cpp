@@ -1,7 +1,8 @@
 #include <Access/EnabledRoles.h>
-#include <Access/Role.h>
 #include <Access/EnabledRolesInfo.h>
+#include <Access/Role.h>
 #include <boost/range/algorithm/copy.hpp>
+#include <Common/Exception.h>
 
 
 namespace DB
@@ -22,12 +23,15 @@ std::shared_ptr<const EnabledRolesInfo> EnabledRoles::getRolesInfo() const
 
 scope_guard EnabledRoles::subscribeForChanges(const OnChangeHandler & handler) const
 {
+    auto entry = std::make_shared<Handler>(handler);
     std::lock_guard lock{handlers->mutex};
-    handlers->list.push_back(handler);
+    handlers->list.push_back(entry);
     auto it = std::prev(handlers->list.end());
 
-    return [my_handlers = handlers, it]
+    return [my_handlers = handlers, entry, it]
     {
+        std::lock_guard delivery_lock{entry->mutex};
+        entry->active = false;
         std::lock_guard lock2{my_handlers->mutex};
         my_handlers->list.erase(it);
     };
@@ -46,7 +50,7 @@ void EnabledRoles::setRolesInfo(const std::shared_ptr<const EnabledRolesInfo> & 
 
     if (notifications)
     {
-        std::vector<OnChangeHandler> handlers_to_notify;
+        std::vector<std::shared_ptr<Handler>> handlers_to_notify;
         {
             std::lock_guard lock{handlers->mutex};
             boost::range::copy(handlers->list, std::back_inserter(handlers_to_notify));
@@ -55,8 +59,21 @@ void EnabledRoles::setRolesInfo(const std::shared_ptr<const EnabledRolesInfo> & 
         notifications->join(scope_guard(
             [my_info = info, my_handlers_to_notify = std::move(handlers_to_notify)]
             {
-                for (const auto & handler : my_handlers_to_notify)
-                    handler(my_info);
+                for (const auto & entry : my_handlers_to_notify)
+                {
+                    std::lock_guard delivery_lock{entry->mutex};
+                    if (entry->active)
+                    {
+                        try
+                        {
+                            entry->function(my_info);
+                        }
+                        catch (...)
+                        {
+                            tryLogCurrentException(__PRETTY_FUNCTION__);
+                        }
+                    }
+                }
             }));
     }
 }
