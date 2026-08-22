@@ -672,14 +672,14 @@ AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & que
         if (validate)
             context->getAccessControl().checkPasswordComplexityRules(value);
 
-        if (query.type == AuthenticationType::BCRYPT_PASSWORD)
+        if (current_type == AuthenticationType::BCRYPT_PASSWORD)
         {
             int workfactor = context->getAccessControl().getBcryptWorkfactor();
             auth_data.setPasswordBcrypt(value, workfactor, /* second_factor */ {}, validate);
             return auth_data;
         }
 
-        if (query.type == AuthenticationType::SHA256_PASSWORD)
+        if (current_type == AuthenticationType::SHA256_PASSWORD)
         {
 #if USE_SSL
             /// random generator FIPS compliant
@@ -705,7 +705,7 @@ AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & que
 #endif
         }
 
-        if (query.type == AuthenticationType::SCRAM_SHA256_PASSWORD)
+        if (current_type == AuthenticationType::SCRAM_SHA256_PASSWORD)
         {
 #if USE_SSL
             /// random generator FIPS compliant

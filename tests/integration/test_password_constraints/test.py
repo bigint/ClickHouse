@@ -8,6 +8,9 @@ node = cluster.add_instance("node", main_configs=["configs/complexity_rules.xml"
 node2 = cluster.add_instance(
     "node2", main_configs=["configs/default_password_type.xml"]
 )
+node3 = cluster.add_instance(
+    "node3", main_configs=["configs/default_password_type_bcrypt.xml"]
+)
 
 
 @pytest.fixture(scope="module")
@@ -49,3 +52,21 @@ def test_default_password_type(start_cluster):
 
     required_type = "double_sha1_password"
     assert required_type in node2.query("SHOW CREATE USER u1")
+
+
+def test_default_sha256_password_is_salted(start_cluster):
+    node.query("CREATE USER default_sha256 IDENTIFIED BY 'aA!000000000'")
+
+    definition = node.query(
+        "SHOW CREATE USER default_sha256",
+        settings={"format_display_secrets_in_show_and_select": 1},
+    )
+    assert "sha256_hash" in definition
+    assert "SALT" in definition
+
+
+def test_default_bcrypt_password(start_cluster):
+    node3.query("CREATE USER default_bcrypt IDENTIFIED BY 'pwd'")
+
+    assert "bcrypt_password" in node3.query("SHOW CREATE USER default_bcrypt")
+    assert node3.query("SELECT 1", user="default_bcrypt", password="pwd") == "1\n"

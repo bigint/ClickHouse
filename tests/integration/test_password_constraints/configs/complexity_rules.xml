@@ -1,4 +1,5 @@
 <clickhouse>
+    <display_secrets_in_show_and_select>1</display_secrets_in_show_and_select>
     <password_complexity>
         <rule>
             <pattern>.{12}</pattern>
@@ -22,4 +23,3 @@
         </rule>
     </password_complexity>
 </clickhouse>
-
