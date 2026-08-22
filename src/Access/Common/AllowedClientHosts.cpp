@@ -167,13 +167,20 @@ namespace
 
     /// Extracts a subnet, a host name or a host name regular expression from a like pattern.
     void parseLikePattern(
-        const String & pattern, std::optional<IPSubnet> & subnet, std::optional<String> & name, std::optional<String> & name_regexp)
+        const String & pattern,
+        std::optional<IPSubnet> & subnet,
+        std::optional<String> & address_regexp,
+        std::optional<String> & name,
+        std::optional<String> & name_regexp)
     {
         /// If `host` starts with digits and a dot then it's an IP pattern, otherwise it's a hostname pattern.
         size_t first_not_digit = pattern.find_first_not_of("0123456789");
         if ((first_not_digit != String::npos) && (first_not_digit != 0) && (pattern[first_not_digit] == '.'))
         {
-            parseLikePatternIfIPSubnet(pattern, subnet.emplace(), IPAddress::IPv4);
+            if (pattern.find_first_of("%_") != String::npos)
+                address_regexp = likePatternToRegexp(pattern);
+            else
+                parseLikePatternIfIPSubnet(pattern, subnet.emplace(), IPAddress::IPv4);
             return;
         }
 
@@ -566,11 +573,22 @@ bool AllowedClientHosts::contains(const IPAddress & client_address) const
     auto check_like_pattern = [&](const String & pattern)
     {
         std::optional<IPSubnet> subnet;
+        std::optional<String> address_regexp;
         std::optional<String> name;
         std::optional<String> name_regexp;
-        parseLikePattern(pattern, subnet, name, name_regexp);
+        parseLikePattern(pattern, subnet, address_regexp, name, name_regexp);
         if (subnet)
             return check_subnet(*subnet);
+        if (address_regexp)
+        {
+            IPAddress address_to_match = client_address;
+            if (address_to_match.family() == IPAddress::IPv6 && address_to_match.isIPv4Mapped())
+                address_to_match = IPAddress(reinterpret_cast<const char *>(address_to_match.addr()) + 12, 4);
+
+            Poco::RegularExpression re(*address_regexp);
+            Poco::RegularExpression::Match match{};
+            return re.match(address_to_match.toString(), match) != 0;
+        }
         if (name)
             return check_name(*name);
         if (name_regexp)

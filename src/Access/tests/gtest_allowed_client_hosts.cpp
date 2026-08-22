@@ -22,3 +22,16 @@ TEST(AllowedClientHosts, IPv6WildcardAllowsShortFirstGroup)
     EXPECT_TRUE(hosts.contains(AllowedClientHosts::IPAddress{"a::1234"}));
     EXPECT_FALSE(hosts.contains(AllowedClientHosts::IPAddress{"b::1234"}));
 }
+
+TEST(AllowedClientHosts, IPv4WildcardsMatchAddressText)
+{
+    AllowedClientHosts hosts;
+    hosts.addLikePattern("192.168.1_.2");
+    hosts.addLikePattern("198.51.1%.3");
+
+    EXPECT_TRUE(hosts.contains(AllowedClientHosts::IPAddress{"192.168.15.2"}));
+    EXPECT_FALSE(hosts.contains(AllowedClientHosts::IPAddress{"192.168.5.2"}));
+    EXPECT_TRUE(hosts.contains(AllowedClientHosts::IPAddress{"198.51.100.3"}));
+    EXPECT_FALSE(hosts.contains(AllowedClientHosts::IPAddress{"198.51.200.3"}));
+    EXPECT_TRUE(hosts.contains(AllowedClientHosts::IPAddress{"::ffff:192.168.15.2"}));
+}
