@@ -185,6 +185,21 @@ TEST(IAccessStorage, BatchMutationProcessesDuplicateIDOnce)
     EXPECT_FALSE(storage.exists(id));
 }
 
+TEST(IAccessStorage, RejectsNullEntitiesFromPublicMutationAPI)
+{
+    AccessChangesNotifier notifier;
+    MemoryAccessStorage storage("memory", notifier, true);
+
+    EXPECT_THROW(storage.insert(AccessEntityPtr{}), Exception);
+
+    const auto user = makeEntity<User>("user");
+    const auto id = storage.insert(user);
+    EXPECT_THROW(
+        storage.update(id, [](const AccessEntityPtr &, const UUID &) { return AccessEntityPtr{}; }),
+        Exception);
+    EXPECT_EQ(storage.read(id), user);
+}
+
 TEST(IAccessStorage, BatchRemovalCleansDependenciesAfterStandardException)
 {
     AccessChangesNotifier notifier;

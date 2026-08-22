@@ -234,6 +234,8 @@ std::optional<UUID> IAccessStorage::insert(const AccessEntityPtr & entity, bool 
 
 bool IAccessStorage::insert(const DB::UUID & id, const DB::AccessEntityPtr & entity, bool replace_if_exists, bool throw_if_exists, UUID * conflicting_id)
 {
+    if (!entity)
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "Cannot insert a null access entity");
     return insertImpl(id, entity, replace_if_exists, throw_if_exists, conflicting_id);
 }
 
@@ -578,7 +580,17 @@ bool IAccessStorage::removeImpl(const UUID & id, bool throw_if_not_exists)
 
 bool IAccessStorage::update(const UUID & id, const UpdateFunc & update_func, bool throw_if_not_exists)
 {
-    return updateImpl(id, update_func, throw_if_not_exists);
+    if (!update_func)
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "Cannot update an access entity with an empty callback");
+
+    auto checked_update_func = [&](const AccessEntityPtr & old_entity, const UUID & entity_id)
+    {
+        auto new_entity = update_func(old_entity, entity_id);
+        if (!new_entity)
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "Update callback returned a null access entity for ID {}", entity_id);
+        return new_entity;
+    };
+    return updateImpl(id, checked_update_func, throw_if_not_exists);
 }
 
 
