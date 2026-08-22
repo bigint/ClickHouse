@@ -105,16 +105,35 @@ namespace
     std::vector<std::pair<UUID, String>> readListFile(const String & file_path)
     {
         ReadBufferFromFile in(file_path);
+        const size_t file_size = in.getFileSize();
 
         size_t num = 0;
         readVarUInt(num, in);
+        const size_t position_after_count = static_cast<size_t>(in.getPosition());
+        const size_t remaining_after_count = file_size - position_after_count;
+
+        /// Every entry contains at least a one-byte string length and a 32-byte UUID.
+        /// Validate the count before using it as an allocation size.
+        constexpr size_t minimum_entry_size = 33;
+        if (num > (remaining_after_count / minimum_entry_size))
+        {
+            throw Exception(
+                ErrorCodes::CORRUPTED_DATA,
+                "Access list {} claims {} entries in only {} remaining bytes",
+                file_path,
+                num,
+                remaining_after_count);
+        }
+
         std::vector<std::pair<UUID, String>> id_name_pairs;
         id_name_pairs.reserve(num);
 
         for (size_t i = 0; i != num; ++i)
         {
+            const size_t position = static_cast<size_t>(in.getPosition());
+            const size_t remaining = file_size - position;
             String name;
-            readStringBinary(name, in);
+            readStringBinary(name, in, remaining - 32);
             UUID id;
             readUUIDText(id, in);
             id_name_pairs.emplace_back(id, std::move(name));
