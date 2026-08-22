@@ -46,19 +46,6 @@ namespace
     }
 
 
-    AccessEntityPtr tryReadEntityFile(const String & file_path, LoggerPtr log)
-    {
-        try
-        {
-            return readEntityFile(file_path);
-        }
-        catch (...)
-        {
-            tryLogCurrentException(log);
-            return nullptr;
-        }
-    }
-
     /// Writes ATTACH queries for building a specified access entity to a file.
     void writeEntityFile(const String & file_path, const IAccessEntity & entity)
     {
@@ -450,9 +437,7 @@ void DiskAccessStorage::reloadAllAndRebuildLists()
             continue;
 
         const auto access_entity_file_path = getEntityFilePath(directory_path, id);
-        auto entity = tryReadEntityFile(access_entity_file_path, getLogger());
-        if (!entity)
-            continue; /// Unparsable file; we leave it on disk for inspection.
+        auto entity = readEntityFile(access_entity_file_path);
 
         std::error_code mtime_ec;
         auto mtime = std::filesystem::last_write_time(path, mtime_ec);

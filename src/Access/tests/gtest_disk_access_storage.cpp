@@ -146,6 +146,24 @@ TEST(DiskAccessStorageRecovery, RebuildRejectsDuplicatesWithEqualModificationTim
     EXPECT_TRUE(std::filesystem::exists(std::filesystem::path(dir) / "need_rebuild_lists.mark"));
 }
 
+TEST(DiskAccessStorageRecovery, RebuildRejectsUnparsableEntityFiles)
+{
+    Poco::TemporaryFile temp_dir;
+    temp_dir.createDirectories();
+    String dir = temp_dir.path() + "/";
+
+    const auto entity_path
+        = std::filesystem::path(dir) / (toString(UUIDHelpers::generateV4()) + ".sql");
+    std::ofstream{entity_path} << "not an access entity";
+
+    AccessChangesNotifier notifier;
+    EXPECT_THROW(
+        DiskAccessStorage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false),
+        Exception);
+    EXPECT_TRUE(std::filesystem::exists(entity_path));
+    EXPECT_TRUE(std::filesystem::exists(std::filesystem::path(dir) / "need_rebuild_lists.mark"));
+}
+
 TEST(DiskAccessStorageRecovery, RebuildsListWithTrailingGarbage)
 {
     Poco::TemporaryFile temp_dir;
