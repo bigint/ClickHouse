@@ -9,9 +9,27 @@
 #include <Access/SettingsProfilesInfo.h>
 #include <Core/Settings.h>
 #include <Core/UUID.h>
+#include <Parsers/Access/ASTSettingsProfileElement.h>
 
 
 using namespace DB;
+
+TEST(SettingsProfileElement, CastsDisallowedValuesWithoutOverwritingValue)
+{
+    AccessControl access_control;
+    ASTSettingsProfileElement ast;
+    ast.setting_name = "max_memory_usage";
+    ast.value = Field{String{"7"}};
+    ast.disallowed_values = {Field{String{"1"}}, Field{String{"2"}}};
+
+    SettingsProfileElement element{ast, access_control};
+
+    ASSERT_TRUE(element.value.has_value());
+    EXPECT_EQ(element.value->safeGet<UInt64>(), 7);
+    ASSERT_EQ(element.disallowed_values.size(), 2);
+    EXPECT_EQ(element.disallowed_values[0].safeGet<UInt64>(), 1);
+    EXPECT_EQ(element.disallowed_values[1].safeGet<UInt64>(), 2);
+}
 
 TEST(SettingsProfilesCache, DefaultProfileChangeRefreshesExistingEnabledSettings)
 {
