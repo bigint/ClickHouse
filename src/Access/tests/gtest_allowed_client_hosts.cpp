@@ -28,10 +28,12 @@ TEST(AllowedClientHosts, IPv4WildcardsMatchAddressText)
     AllowedClientHosts hosts;
     hosts.addLikePattern("192.168.1_.2");
     hosts.addLikePattern("198.51.1%.3");
+    hosts.addLikePattern("_92.0.2.4");
 
     EXPECT_TRUE(hosts.contains(AllowedClientHosts::IPAddress{"192.168.15.2"}));
     EXPECT_FALSE(hosts.contains(AllowedClientHosts::IPAddress{"192.168.5.2"}));
     EXPECT_TRUE(hosts.contains(AllowedClientHosts::IPAddress{"198.51.100.3"}));
     EXPECT_FALSE(hosts.contains(AllowedClientHosts::IPAddress{"198.51.200.3"}));
+    EXPECT_TRUE(hosts.contains(AllowedClientHosts::IPAddress{"192.0.2.4"}));
     EXPECT_TRUE(hosts.contains(AllowedClientHosts::IPAddress{"::ffff:192.168.15.2"}));
 }

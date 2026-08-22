@@ -173,9 +173,13 @@ namespace
         std::optional<String> & name,
         std::optional<String> & name_regexp)
     {
-        /// If `host` starts with digits and a dot then it's an IP pattern, otherwise it's a hostname pattern.
+        /// A leading decimal component, or a pattern made only of decimal IP characters and wildcards,
+        /// identifies an IPv4 pattern; other dotted patterns are hostnames.
         size_t first_not_digit = pattern.find_first_not_of("0123456789");
-        if ((first_not_digit != String::npos) && (first_not_digit != 0) && (pattern[first_not_digit] == '.'))
+        const bool starts_with_ipv4_component
+            = (first_not_digit != String::npos) && (first_not_digit != 0) && (pattern[first_not_digit] == '.');
+        const bool is_wildcarded_ipv4 = pattern.contains('.') && (pattern.find_first_not_of("0123456789.%_") == String::npos);
+        if (starts_with_ipv4_component || is_wildcarded_ipv4)
         {
             if (pattern.find_first_of("%_") != String::npos)
                 address_regexp = likePatternToRegexp(pattern);
