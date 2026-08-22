@@ -137,7 +137,9 @@ namespace
 
                     if (reading_dependencies)
                     {
-                       res.dependencies.emplace(id, std::pair{name, type});
+                        auto [it, inserted] = res.dependencies.emplace(id, std::pair{name, type});
+                        if (!inserted && (it->second != std::pair{name, type}))
+                            throw Exception(ErrorCodes::CANNOT_RESTORE_TABLE, "Conflicting dependency metadata for UUID {}", id);
                     }
                     else
                     {
@@ -161,10 +163,10 @@ namespace
                         if (type != entity->getType())
                             throw Exception(ErrorCodes::CANNOT_RESTORE_TABLE, "Unexpected type {} is specified for {}", AccessEntityTypeInfo::get(type).name, entity->formatTypeWithName());
 
-                        if (reading_dependents)
-                            res.dependents.emplace(id, entity);
-                        else
-                            res.entities.emplace(id, entity);
+                        auto & destination = reading_dependents ? res.dependents : res.entities;
+                        auto [it, inserted] = destination.emplace(id, entity);
+                        if (!inserted && (*it->second != *entity))
+                            throw Exception(ErrorCodes::CANNOT_RESTORE_TABLE, "Conflicting definitions for UUID {}", id);
                     }
                 }
 
@@ -264,6 +266,24 @@ void AccessRestorerFromBackup::loadFromBackup()
     if (loaded)
         return;
 
+    decltype(entity_infos) loaded_entity_infos;
+    auto get_or_add_entity_info = [&](const UUID & id, const String & name, AccessEntityType type, const String & filepath) -> EntityInfo &
+    {
+        auto [it, inserted] = loaded_entity_infos.emplace(id, EntityInfo{.id = id, .name = name, .type = type});
+        EntityInfo & entity_info = it->second;
+        if (!inserted && ((entity_info.name != name) || (entity_info.type != type)))
+        {
+            throw Exception(
+                ErrorCodes::CANNOT_RESTORE_TABLE,
+                "Conflicting metadata for UUID {}: {} and {} while reading {}",
+                id,
+                AccessEntityTypeInfo::get(entity_info.type).formatEntityNameWithType(entity_info.name),
+                AccessEntityTypeInfo::get(type).formatEntityNameWithType(name),
+                filepath);
+        }
+        return entity_info;
+    };
+
     /// Parse files "access*.txt" found in the added data paths in the backup.
     for (size_t data_path_index = 0; data_path_index != data_paths_in_backup.size(); ++data_path_index)
     {
@@ -299,12 +319,17 @@ void AccessRestorerFromBackup::loadFromBackup()
 
             for (const auto & [id, entity] : ab.entities)
             {
-                auto it = entity_infos.find(id);
-                if (it == entity_infos.end())
+                EntityInfo & entity_info = get_or_add_entity_info(id, entity->getName(), entity->getType(), filepath_in_backup);
+                if (entity_info.restore)
                 {
-                    it = entity_infos.emplace(id, EntityInfo{.id = id, .name = entity->getName(), .type = entity->getType()}).first;
+                    if (*entity_info.entity != *entity)
+                        throw Exception(
+                            ErrorCodes::CANNOT_RESTORE_TABLE,
+                            "Conflicting definitions for UUID {} while reading {}",
+                            id,
+                            filepath_in_backup);
+                    continue;
                 }
-                EntityInfo & entity_info = it->second;
                 entity_info.entity = entity;
                 entity_info.restore = true;
                 entity_info.data_path_index = data_path_index;
@@ -312,29 +337,55 @@ void AccessRestorerFromBackup::loadFromBackup()
 
             for (const auto & [id, name_and_type] : ab.dependencies)
             {
-                auto it = entity_infos.find(id);
-                if (it == entity_infos.end())
-                {
-                    it = entity_infos.emplace(id, EntityInfo{.id = id, .name = name_and_type.first, .type = name_and_type.second}).first;
-                }
-                EntityInfo & entity_info = it->second;
+                EntityInfo & entity_info = get_or_add_entity_info(id, name_and_type.first, name_and_type.second, filepath_in_backup);
                 entity_info.is_dependency = true;
             }
 
             for (const auto & [id, entity] : ab.dependents)
             {
-                auto it = entity_infos.find(id);
-                if (it == entity_infos.end())
+                EntityInfo & entity_info = get_or_add_entity_info(id, entity->getName(), entity->getType(), filepath_in_backup);
+                if (entity_info.restore)
+                    continue;
+
+                if (!entity_info.entity)
                 {
-                    it = entity_infos.emplace(id, EntityInfo{.id = id, .name = entity->getName(), .type = entity->getType()}).first;
-                }
-                EntityInfo & entity_info = it->second;
-                if (!entity_info.restore)
                     entity_info.entity = entity;
+                    continue;
+                }
+
+                std::unordered_set<UUID> dependencies_to_copy;
+                for (const auto & dependency_id : entity->findDependencies())
+                    dependencies_to_copy.emplace(dependency_id);
+                for (const auto & dependency_id : entity_info.entity->findDependencies())
+                    dependencies_to_copy.erase(dependency_id);
+
+                if (!dependencies_to_copy.empty())
+                {
+                    auto merged_entity = entity_info.entity->clone();
+                    merged_entity->copyDependenciesFrom(*entity, dependencies_to_copy);
+
+                    std::unordered_set<UUID> merged_dependencies;
+                    for (const auto & dependency_id : merged_entity->findDependencies())
+                        merged_dependencies.emplace(dependency_id);
+                    for (const auto & dependency_id : dependencies_to_copy)
+                    {
+                        if (!merged_dependencies.contains(dependency_id))
+                        {
+                            throw Exception(
+                                ErrorCodes::CANNOT_RESTORE_TABLE,
+                                "Conflicting dependent definitions for UUID {} while reading {}",
+                                id,
+                                filepath_in_backup);
+                        }
+                    }
+
+                    entity_info.entity = std::move(merged_entity);
+                }
             }
         }
     }
 
+    entity_infos = std::move(loaded_entity_infos);
     loaded = true;
 }
 
