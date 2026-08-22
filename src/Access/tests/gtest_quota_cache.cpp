@@ -5,6 +5,7 @@
 #include <Access/EnabledQuota.h>
 #include <Access/MemoryAccessStorage.h>
 #include <Access/Quota.h>
+#include <Access/QuotaUsage.h>
 #include <Core/UUID.h>
 #include <Common/Exception.h>
 
@@ -65,4 +66,38 @@ TEST(QuotaCache, PreservesPerNormalizedHashUsageOnUpdate)
         });
 
     EXPECT_THROW(enabled_quota->usedPerNormalizedHash(42), Exception);
+}
+
+TEST(QuotaCache, RejectedQueryIsAccountedToEveryMatchingQuota)
+{
+    AccessControl access_control;
+    auto storage = std::make_shared<MemoryAccessStorage>("memory", access_control.getChangesNotifier(), true);
+    access_control.setStorages({storage});
+
+    for (const auto & name : {"first", "second"})
+    {
+        auto quota = std::make_shared<Quota>();
+        quota->setName(name);
+        quota->key_type = QuotaKeyType::USER_NAME;
+        quota->to_roles = RolesOrUsersSet::AllTag{};
+        auto & limits = quota->all_limits.emplace_back();
+        limits.duration = std::chrono::minutes(1);
+        limits.max[static_cast<size_t>(QuotaType::QUERIES)] = 1;
+        limits.max[static_cast<size_t>(QuotaType::ERRORS)] = 1;
+        access_control.insert(quota);
+    }
+
+    auto enabled_quota = access_control.getEnabledQuota(
+        UUIDHelpers::generateV4(), "user", {}, std::make_shared<Poco::Net::IPAddress>("127.0.0.1"), "", "");
+    enabled_quota->usedForQuery(42, {{QuotaType::QUERIES, 1}, {QuotaType::ERRORS, 1}});
+    EXPECT_THROW(enabled_quota->usedForQuery(42, {{QuotaType::QUERIES, 1}, {QuotaType::ERRORS, 1}}), Exception);
+
+    const auto usages = enabled_quota->getAllUsage();
+    ASSERT_EQ(2u, usages.size());
+    for (const auto & usage : usages)
+    {
+        ASSERT_EQ(1u, usage.intervals.size());
+        EXPECT_EQ(2u, usage.intervals.front().used[static_cast<size_t>(QuotaType::QUERIES)]);
+        EXPECT_EQ(2u, usage.intervals.front().used[static_cast<size_t>(QuotaType::ERRORS)]);
+    }
 }
