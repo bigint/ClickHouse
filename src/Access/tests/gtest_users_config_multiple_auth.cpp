@@ -109,6 +109,13 @@ TEST_F(UsersConfigMultipleAuthTest, DottedEntityNamesUseUnescapedIDs)
                     <grants>
                         <query>GRANT `role.with.dot`</query>
                     </grants>
+                    <databases>
+                        <database.with.dot>
+                            <table.with.dot>
+                                <filter>1</filter>
+                            </table.with.dot>
+                        </database.with.dot>
+                    </databases>
                 </test_user>
             </users>
         </clickhouse>
@@ -133,6 +140,13 @@ TEST_F(UsersConfigMultipleAuthTest, DottedEntityNamesUseUnescapedIDs)
     EXPECT_TRUE(user->granted_roles.isGranted(*role_id));
     EXPECT_EQ(user->settings.toProfileIDs(), UUIDs{*profile_id});
     EXPECT_TRUE(quota->to_roles.match(*user_id));
+
+    const auto policy_ids = storage->findAll<RowPolicy>();
+    ASSERT_EQ(policy_ids.size(), 1u);
+    const auto policy = storage->tryRead<RowPolicy>(policy_ids.front());
+    ASSERT_TRUE(policy);
+    EXPECT_EQ(policy->getDatabase(), "database.with.dot");
+    EXPECT_EQ(policy->getTableName(), "table.with.dot");
 }
 
 #if USE_SSL

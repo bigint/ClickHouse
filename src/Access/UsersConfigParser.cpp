@@ -990,6 +990,7 @@ std::vector<AccessEntityPtr> UsersConfigParser::parseRowPolicies(const Poco::Uti
                     database_name = database_key.substr(0, bracket_pos);
                 else
                     database_name = database_key;
+                database_name = unescapeConfigKeyName(std::move(database_name));
 
                 Poco::Util::AbstractConfiguration::Keys table_keys;
                 config.keys(database_config, table_keys);
@@ -1005,6 +1006,7 @@ std::vector<AccessEntityPtr> UsersConfigParser::parseRowPolicies(const Poco::Uti
                         table_name = table_key.substr(0, bracket_pos);
                     else
                         table_name = table_key;
+                    table_name = unescapeConfigKeyName(std::move(table_name));
 
                     String filter_config = table_config + ".filter";
                     all_filters_map[{database_name, table_name}][normalized_user_name] = config.getString(filter_config);
