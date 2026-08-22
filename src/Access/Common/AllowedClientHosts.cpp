@@ -126,38 +126,13 @@ namespace
         return hosts;
     }
 
-    void parseLikePatternIfIPSubnet(const String & pattern, IPSubnet & subnet, IPAddress::Family address_family)
+    void parseIPSubnetOrAddress(const String & pattern, IPSubnet & subnet)
     {
         size_t slash = pattern.find('/');
         if (slash != String::npos)
         {
             /// IP subnet, e.g. "192.168.0.0/16" or "192.168.0.0/255.255.0.0".
             subnet = IPSubnet{pattern};
-            return;
-        }
-
-        bool has_wildcard = (pattern.find_first_of("%_") != String::npos);
-        if (has_wildcard)
-        {
-            /// IP subnet specified with one of the wildcard characters, e.g. "192.168.%.%".
-            String wildcard_replaced_with_zero_bits = pattern;
-            String wildcard_replaced_with_one_bits = pattern;
-            if (address_family == IPAddress::IPv6)
-            {
-                replaceAll(wildcard_replaced_with_zero_bits, "_", "0");
-                replaceAll(wildcard_replaced_with_zero_bits, "%", "0000");
-                replaceAll(wildcard_replaced_with_one_bits, "_", "f");
-                replaceAll(wildcard_replaced_with_one_bits, "%", "ffff");
-            }
-            else if (address_family == IPAddress::IPv4)
-            {
-                replaceAll(wildcard_replaced_with_zero_bits, "%", "0");
-                replaceAll(wildcard_replaced_with_one_bits, "%", "255");
-            }
-
-            IPAddress prefix{wildcard_replaced_with_zero_bits};
-            IPAddress mask = ~(prefix ^ IPAddress{wildcard_replaced_with_one_bits});
-            subnet = IPSubnet{prefix, mask};
             return;
         }
 
@@ -184,13 +159,16 @@ namespace
             if (pattern.find_first_of("%_") != String::npos)
                 address_regexp = likePatternToRegexp(pattern);
             else
-                parseLikePatternIfIPSubnet(pattern, subnet.emplace(), IPAddress::IPv4);
+                parseIPSubnetOrAddress(pattern, subnet.emplace());
             return;
         }
 
         if (pattern.contains(':'))
         {
-            parseLikePatternIfIPSubnet(pattern, subnet.emplace(), IPAddress::IPv6);
+            if (pattern.find_first_of("%_") != String::npos)
+                address_regexp = likePatternToRegexp(pattern);
+            else
+                parseIPSubnetOrAddress(pattern, subnet.emplace());
             return;
         }
 

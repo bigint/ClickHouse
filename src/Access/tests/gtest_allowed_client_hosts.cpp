@@ -23,6 +23,18 @@ TEST(AllowedClientHosts, IPv6WildcardAllowsShortFirstGroup)
     EXPECT_FALSE(hosts.contains(AllowedClientHosts::IPAddress{"b::1234"}));
 }
 
+TEST(AllowedClientHosts, IPv6WildcardsMatchAddressText)
+{
+    AllowedClientHosts hosts;
+    hosts.addLikePattern("2001:db8:1%::");
+    hosts.addLikePattern("2001:db8:_::1");
+
+    EXPECT_TRUE(hosts.contains(AllowedClientHosts::IPAddress{"2001:db8:1234::"}));
+    EXPECT_FALSE(hosts.contains(AllowedClientHosts::IPAddress{"2001:db8:2::"}));
+    EXPECT_TRUE(hosts.contains(AllowedClientHosts::IPAddress{"2001:db8:a::1"}));
+    EXPECT_FALSE(hosts.contains(AllowedClientHosts::IPAddress{"2001:db8:ab::1"}));
+}
+
 TEST(AllowedClientHosts, IPv4WildcardsMatchAddressText)
 {
     AllowedClientHosts hosts;
