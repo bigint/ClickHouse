@@ -49,6 +49,9 @@ public:
     scope_guard subscribeForChanges(const UUID & id, const OnChangedHandler & handler);
     scope_guard subscribeForChanges(const std::vector<UUID> & ids, const OnChangedHandler & handler);
 
+    /// Delays calls to `sendNotifications` until the returned guard is destroyed.
+    scope_guard deferNotifications();
+
     /// Called by access storages after a new access entity has been added.
     void onEntityAdded(const UUID & id, const AccessEntityPtr & new_entity);
 
@@ -77,6 +80,8 @@ private:
     std::mutex queue_mutex;
     std::recursive_mutex sending_notifications;
     bool sending_notifications_in_progress = false; /// guarded by `sending_notifications`
+    size_t notification_deferral_depth = 0; /// guarded by `sending_notifications`
+    bool notification_pending = false; /// guarded by `sending_notifications`
 };
 
 }

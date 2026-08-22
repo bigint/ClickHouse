@@ -5,6 +5,8 @@
 #include <Core/UUID.h>
 #include <Common/Exception.h>
 
+#include <future>
+
 using namespace DB;
 
 namespace DB::ErrorCodes
@@ -192,4 +194,21 @@ TEST(AccessChangesNotifier, ReentrantSendIsDrainedByOuterCall)
     notifier.sendNotifications();
 
     EXPECT_EQ(user_changes, 1u);
+}
+
+TEST(AccessChangesNotifier, DeferralDelaysConcurrentSend)
+{
+    AccessChangesNotifier notifier;
+    size_t delivered_changes = 0;
+    auto subscription = notifier.subscribeForChanges(
+        AccessEntityType::ROLE, [&](const std::vector<AccessChangesNotifier::Change> & changes) { delivered_changes += changes.size(); });
+
+    auto deferral = notifier.deferNotifications();
+    notifier.onEntityRemoved(UUIDHelpers::generateV4(), AccessEntityType::ROLE);
+    auto sender = std::async(std::launch::async, [&] { notifier.sendNotifications(); });
+    sender.get();
+
+    EXPECT_EQ(delivered_changes, 0u);
+    deferral.reset();
+    EXPECT_EQ(delivered_changes, 1u);
 }

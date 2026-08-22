@@ -89,10 +89,31 @@ scope_guard AccessChangesNotifier::subscribeForChanges(const std::vector<UUID> &
     return subscriptions;
 }
 
+scope_guard AccessChangesNotifier::deferNotifications()
+{
+    std::lock_guard lock{sending_notifications};
+    ++notification_deferral_depth;
+    return [this]
+    {
+        std::lock_guard lock2{sending_notifications};
+        chassert(notification_deferral_depth != 0);
+        if (--notification_deferral_depth != 0 || !notification_pending)
+            return;
+
+        notification_pending = false;
+        sendNotifications();
+    };
+}
+
 void AccessChangesNotifier::sendNotifications()
 {
     /// Only one thread can send notifications at any time.
     std::lock_guard sending_notifications_lock{sending_notifications};
+    if (notification_deferral_depth != 0)
+    {
+        notification_pending = true;
+        return;
+    }
     if (sending_notifications_in_progress)
         return;
     sending_notifications_in_progress = true;
