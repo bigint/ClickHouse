@@ -163,6 +163,14 @@ EnabledQuota::Interval::Interval(std::chrono::seconds duration_, bool randomize_
     if (duration <= std::chrono::seconds::zero())
         throw Exception(ErrorCodes::BAD_ARGUMENTS, "Quota interval duration must be positive, got {} seconds", duration.count());
 
+    const auto max_duration_from_current_time
+        = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::time_point::max() - current_time_);
+    if (duration > max_duration_from_current_time)
+        throw Exception(
+            ErrorCodes::BAD_ARGUMENTS,
+            "Quota interval duration {} seconds is too large for the system clock",
+            duration.count());
+
     std::chrono::system_clock::time_point initial_end{};
     if (randomize_interval_)
         initial_end += Impl::randomDuration(duration_);

@@ -68,4 +68,9 @@ TEST(EnabledQuota, RejectsNonPositiveIntervalDuration)
     EXPECT_THROW(EnabledQuotaTestAccess::constructInterval(std::chrono::seconds{-1}), Exception);
 }
 
+TEST(EnabledQuota, RejectsIntervalDurationOutsideSystemClockRange)
+{
+    EXPECT_THROW(EnabledQuotaTestAccess::constructInterval(std::chrono::seconds::max()), Exception);
+}
+
 }
