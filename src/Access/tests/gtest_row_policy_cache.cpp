@@ -64,3 +64,42 @@ TEST(RowPolicyCache, UsersWithoutPoliciesSettingRefreshesExistingEnabledPolicies
     ASSERT_TRUE(filter);
     EXPECT_TRUE(filter->isAlwaysFalse());
 }
+
+TEST(RowPolicyCache, PolicyChangesResolveCompositeOwner)
+{
+    AccessControl access_control;
+    auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", access_control.getChangesNotifier(), true);
+    auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", access_control.getChangesNotifier(), true);
+    const auto policy_id = UUIDHelpers::generateV4();
+
+    auto higher_priority_policy = std::make_shared<RowPolicy>();
+    higher_priority_policy->setFullName("higher_priority", "database", "table");
+    higher_priority_policy->to_roles = RolesOrUsersSet::AllTag{};
+    higher_priority_policy->filters[static_cast<size_t>(RowPolicyFilterType::SELECT_FILTER)] = "1";
+    higher_priority_storage->insert(policy_id, higher_priority_policy, false, true);
+
+    auto lower_priority_policy = std::make_shared<RowPolicy>();
+    lower_priority_policy->setFullName("lower_priority", "database", "table");
+    lower_priority_policy->to_roles = RolesOrUsersSet::AllTag{};
+    lower_priority_policy->filters[static_cast<size_t>(RowPolicyFilterType::SELECT_FILTER)] = "0";
+    lower_priority_storage->insert(policy_id, lower_priority_policy, false, true);
+
+    access_control.setStorages({higher_priority_storage, lower_priority_storage});
+    auto enabled_policies = access_control.getEnabledRowPolicies(UUIDHelpers::generateV4(), {});
+    auto filter = enabled_policies->getFilter("database", "table", RowPolicyFilterType::SELECT_FILTER);
+    ASSERT_TRUE(filter);
+    EXPECT_TRUE(filter->isAlwaysTrue());
+
+    lower_priority_storage->update(
+        policy_id,
+        [](const AccessEntityPtr & entity, const UUID &)
+        {
+            auto updated = std::static_pointer_cast<RowPolicy>(entity->clone());
+            updated->setShortName("lower_priority_updated");
+            return updated;
+        });
+    access_control.getChangesNotifier().sendNotifications();
+    filter = enabled_policies->getFilter("database", "table", RowPolicyFilterType::SELECT_FILTER);
+    ASSERT_TRUE(filter);
+    EXPECT_TRUE(filter->isAlwaysTrue());
+}

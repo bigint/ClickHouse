@@ -16,6 +16,8 @@
 #include <Common/logger_useful.h>
 #include <Common/quoteString.h>
 
+#include <unordered_set>
+
 
 namespace ProfileEvents
 {
@@ -158,12 +160,17 @@ void RowPolicyCache::ensureAllRowPoliciesRead()
         {
             {
                 std::lock_guard lock{mutex};
+                std::unordered_set<UUID> changed_ids;
                 for (const auto & change : changes)
+                    changed_ids.emplace(change.id);
+
+                for (const auto & id : changed_ids)
                 {
-                    if (change.entity)
-                        rowPolicyAddedOrChanged(change.id, typeid_cast<RowPolicyPtr>(change.entity));
+                    auto entity = access_control.tryRead(id);
+                    if (auto policy = entity ? typeid_cast<RowPolicyPtr>(entity) : nullptr)
+                        rowPolicyAddedOrChanged(id, policy);
                     else
-                        rowPolicyRemoved(change.id);
+                        rowPolicyRemoved(id);
                 }
             }
             /// Off `mutex` - see mixFiltersIfNeeded.
