@@ -1,9 +1,12 @@
 #include <Access/AccessControl.h>
-#include <Access/UsersConfigAccessStorage.h>
 #include <Access/User.h>
-#include <Common/Exception.h>
-#include <Poco/Util/XMLConfiguration.h>
+#include <Access/UsersConfigAccessStorage.h>
 #include <gtest/gtest.h>
+#include <Poco/TemporaryFile.h>
+#include <Poco/Util/XMLConfiguration.h>
+#include <Common/Exception.h>
+
+#include <fstream>
 #include <sstream>
 
 using namespace DB;
@@ -83,6 +86,44 @@ TEST(UsersConfigAccessStorage, ReplacementDeliversNotifications)
     access_control.setUsersConfig(*replacement_config);
 
     EXPECT_TRUE(replacement_visible_during_notification);
+}
+
+TEST(UsersConfigAccessStorage, ReloadCallbackOwnsConfigPath)
+{
+    Poco::TemporaryFile temp_dir;
+    temp_dir.createDirectories();
+    String config_path = temp_dir.path() + "/users.xml";
+
+    std::ofstream{config_path} << R"(
+        <clickhouse>
+            <users>
+                <initial_user><no_password/></initial_user>
+            </users>
+        </clickhouse>
+    )";
+
+    AccessControl access_control;
+    UsersConfigAccessStorage storage("users_config_test", access_control, false);
+    storage.load(config_path, "", temp_dir.path(), [] { return zkutil::ZooKeeperPtr{}; });
+
+    const String original_config_path = config_path;
+    config_path = "mutated-after-load.xml";
+    std::ofstream{original_config_path} << R"(
+        <clickhouse>
+            <max_threads>1</max_threads>
+        </clickhouse>
+    )";
+
+    try
+    {
+        storage.reload(IAccessStorage::ReloadMode::ALL);
+        FAIL() << "reload unexpectedly succeeded";
+    }
+    catch (const Exception & e)
+    {
+        EXPECT_NE(e.message().find(original_config_path), String::npos);
+        EXPECT_EQ(e.message().find(config_path), String::npos);
+    }
 }
 
 TEST_F(UsersConfigMultipleAuthTest, FlatNoPassword)
