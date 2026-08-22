@@ -5,6 +5,7 @@
 #include <Access/MultipleAccessStorage.h>
 #include <Access/Role.h>
 #include <Access/User.h>
+#include <Common/Exception.h>
 
 
 using namespace DB;
@@ -69,4 +70,33 @@ TEST(MultipleAccessStorage, MovePreservesReferencesToMovedEntity)
     EXPECT_FALSE(source_storage->exists(role_id));
     EXPECT_TRUE(destination_storage->exists(role_id));
     EXPECT_TRUE(source_storage->read<User>(user_id)->granted_roles.isGranted(role_id));
+}
+
+TEST(MultipleAccessStorage, MoveRollsBackPartialDestinationInsertion)
+{
+    AccessChangesNotifier notifier;
+    auto source_storage = std::make_shared<MemoryAccessStorage>("source", notifier, true);
+    auto destination_storage = std::make_shared<MemoryAccessStorage>("destination", notifier, true);
+
+    auto first_role = std::make_shared<Role>();
+    first_role->setName("first_role");
+    const auto first_role_id = source_storage->insert(first_role);
+
+    auto conflicting_role = std::make_shared<Role>();
+    conflicting_role->setName("conflicting_role");
+    const auto conflicting_role_id = source_storage->insert(conflicting_role);
+    const auto destination_role_id = destination_storage->insert(conflicting_role);
+
+    MultipleAccessStorage storage;
+    storage.setStorages({source_storage, destination_storage});
+
+    EXPECT_THROW(
+        storage.moveAccessEntities(
+            {first_role_id, conflicting_role_id}, source_storage->getStorageName(), destination_storage->getStorageName()),
+        Exception);
+
+    EXPECT_TRUE(source_storage->exists(first_role_id));
+    EXPECT_TRUE(source_storage->exists(conflicting_role_id));
+    EXPECT_FALSE(destination_storage->exists(first_role_id));
+    EXPECT_EQ(destination_storage->getID<Role>("conflicting_role"), destination_role_id);
 }

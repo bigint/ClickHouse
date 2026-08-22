@@ -252,17 +252,44 @@ StoragePtr MultipleAccessStorage::findExcludingStorage(AccessEntityType type, co
 
 void MultipleAccessStorage::moveAccessEntities(const std::vector<UUID> & ids, const String & source_storage_name, const String & destination_storage_name)
 {
+    std::lock_guard move_lock{move_mutex};
+
     auto source_storage = getStorageByName(source_storage_name);
     auto destination_storage = getStorageByName(destination_storage_name);
 
     auto to_move = source_storage->read(ids);
-    bool need_rollback = false;
+    if (source_storage == destination_storage)
+        return;
+
+    std::vector<AccessEntityPtr> removed_entities;
+    std::vector<UUID> removed_ids;
+    std::vector<UUID> inserted_ids;
+    removed_entities.reserve(ids.size());
+    removed_ids.reserve(ids.size());
+    inserted_ids.reserve(ids.size());
+
+    auto rollback = [&]
+    {
+        if (!inserted_ids.empty())
+            removeWithoutDependencyCleanup(*destination_storage, inserted_ids);
+        if (!removed_ids.empty())
+            source_storage->insert(removed_entities, removed_ids);
+    };
 
     try
     {
-        removeWithoutDependencyCleanup(*source_storage, ids);
-        need_rollback = true;
-        destination_storage->insert(to_move, ids);
+        for (size_t i = 0; i != ids.size(); ++i)
+        {
+            removeWithoutDependencyCleanup(*source_storage, {ids[i]});
+            removed_entities.push_back(to_move[i]);
+            removed_ids.push_back(ids[i]);
+        }
+
+        for (size_t i = 0; i != ids.size(); ++i)
+        {
+            destination_storage->insert(ids[i], to_move[i], /* replace_if_exists= */ false, /* throw_if_exists= */ true);
+            inserted_ids.push_back(ids[i]);
+        }
     }
     catch (Exception & e)
     {
@@ -278,10 +305,12 @@ void MultipleAccessStorage::moveAccessEntities(const std::vector<UUID> & ids, co
         }
 
         e.addMessage("while moving {} from {} to {}", message, source_storage_name, destination_storage_name);
-
-        if (need_rollback)
-            source_storage->insert(to_move, ids);
-
+        rollback();
+        throw;
+    }
+    catch (...)
+    {
+        rollback();
         throw;
     }
 }
