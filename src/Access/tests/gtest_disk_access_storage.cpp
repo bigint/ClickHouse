@@ -8,6 +8,7 @@
 #include <Access/Role.h>
 #include <Access/User.h>
 #include <Core/UUID.h>
+#include <IO/WriteBufferFromFile.h>
 #include <IO/WriteHelpers.h>
 #include <Common/Exception.h>
 #include <Parsers/ASTLiteral.h>
@@ -33,6 +34,18 @@ void writeEntityToFile(const std::filesystem::path & file_path, const IAccessEnt
 void writeNeedRebuildMarker(const String & directory)
 {
     std::ofstream{directory + "need_rebuild_lists.mark"};
+}
+
+void writeListToFile(const std::filesystem::path & file_path, const std::vector<std::pair<UUID, String>> & entries)
+{
+    WriteBufferFromFile out(file_path.string());
+    writeVarUInt(entries.size(), out);
+    for (const auto & [id, name] : entries)
+    {
+        writeStringBinary(name, out);
+        writeUUIDText(id, out);
+    }
+    out.close();
 }
 
 }
@@ -191,6 +204,28 @@ TEST(DiskAccessStorageRecovery, RebuildsListWithTrailingGarbage)
     DiskAccessStorage storage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false);
     EXPECT_EQ(storage.getID<User>("alice"), id);
     EXPECT_EQ(std::filesystem::file_size(users_list_path), valid_size);
+}
+
+TEST(DiskAccessStorageRecovery, RebuildsListWithDuplicateIDs)
+{
+    Poco::TemporaryFile temp_dir;
+    temp_dir.createDirectories();
+    String dir = temp_dir.path() + "/";
+
+    const auto id = UUIDHelpers::generateV4();
+    {
+        AccessChangesNotifier notifier;
+        DiskAccessStorage storage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false);
+        auto user = std::make_shared<User>();
+        user->setName("alice");
+        storage.insert(id, user, false, true);
+    }
+
+    writeListToFile(std::filesystem::path(dir) / "users.list", {{id, "alice"}, {id, "alice"}});
+
+    AccessChangesNotifier notifier;
+    DiskAccessStorage storage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false);
+    EXPECT_EQ(storage.getID<User>("alice"), id);
 }
 
 TEST(DiskAccessStorage, LazyMaterializationDoesNotNotify)

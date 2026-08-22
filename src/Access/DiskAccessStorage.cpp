@@ -1,5 +1,6 @@
 #include <filesystem>
 #include <memory>
+#include <unordered_set>
 #include <Access/AccessChangesNotifier.h>
 #include <Access/AccessEntityIO.h>
 #include <Access/DiskAccessStorage.h>
@@ -268,6 +269,8 @@ bool DiskAccessStorage::isPathEqual(const String & directory_path_) const
 bool DiskAccessStorage::readLists()
 {
     std::vector<std::pair<UUID, AccessEntityPtr>> ids_entities;
+    std::unordered_set<UUID> seen_ids;
+    std::unordered_set<String> seen_names_by_type[static_cast<size_t>(AccessEntityType::MAX)];
 
     for (auto type : collections::range(AccessEntityType::MAX))
     {
@@ -281,7 +284,21 @@ bool DiskAccessStorage::readLists()
         try
         {
             for (auto & [id, name] : readListFile(file_path))
+            {
+                if (!seen_ids.emplace(id).second)
+                    throw Exception(ErrorCodes::CORRUPTED_DATA, "Access list {} contains duplicate ID {}", file_path, id);
+
+                auto & seen_names = seen_names_by_type[static_cast<size_t>(type)];
+                if (!seen_names.emplace(name).second)
+                    throw Exception(
+                        ErrorCodes::CORRUPTED_DATA,
+                        "Access list {} contains duplicate {} {}",
+                        file_path,
+                        AccessEntityTypeInfo::get(type).name,
+                        name);
+
                 ids_entities.emplace_back(id, std::make_shared<EntityOnDisk>(std::move(name), type));
+            }
         }
         catch (...)
         {
