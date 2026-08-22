@@ -79,6 +79,35 @@ struct EnabledQuota::Impl
         }
     }
 
+    static void checkExceededPerNormalizedHash(
+        const String & user_name,
+        const Intervals & intervals,
+        UInt64 normalized_query_hash,
+        std::chrono::system_clock::time_point current_time)
+    {
+        constexpr auto quota_type = QuotaType::QUERIES_PER_NORMALIZED_HASH;
+        constexpr auto quota_type_i = static_cast<size_t>(quota_type);
+
+        for (const auto & interval : intervals.intervals)
+        {
+            QuotaValue max = interval.max[quota_type_i];
+            if (!max)
+                continue;
+
+            auto end_of_interval = interval.getEndOfInterval(current_time);
+            QuotaValue used = 0;
+            {
+                std::lock_guard lock(interval.mutex);
+                auto * entry = interval.per_hash_used.find(normalized_query_hash);
+                if (entry != interval.per_hash_used.end())
+                    used = entry->getMapped();
+            }
+
+            if (used > max)
+                throwQuotaExceed(user_name, intervals.quota_name, quota_type, used, max, interval.duration, end_of_interval);
+        }
+    }
+
     static void checkExceeded(
         const String & user_name,
         const Intervals & intervals,
@@ -370,7 +399,7 @@ void EnabledQuota::usedPerNormalizedHash(UInt64 normalized_query_hash) const
         }
     }
     for (const auto & target : targets)
-        Impl::checkExceeded(getUserName(), *target, QuotaType::QUERIES_PER_NORMALIZED_HASH, current_time);
+        Impl::checkExceededPerNormalizedHash(getUserName(), *target, normalized_query_hash, current_time);
 }
 
 
