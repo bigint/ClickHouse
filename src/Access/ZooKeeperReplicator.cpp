@@ -93,8 +93,11 @@ ZooKeeperReplicator::ZooKeeperReplicator(
     if (zookeeper_path.empty())
         throw Exception(ErrorCodes::BAD_ARGUMENTS, "ZooKeeper path must be non-empty");
 
-    if (zookeeper_path.back() == '/')
-        zookeeper_path.resize(zookeeper_path.size() - 1);
+    while (zookeeper_path.size() > 1 && zookeeper_path.back() == '/')
+        zookeeper_path.pop_back();
+
+    if (zookeeper_path == "/")
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "ZooKeeper path for replicated access storage must not be the root path");
 
     /// If zookeeper chroot prefix is used, path should start with '/', because chroot concatenates without it.
     if (zookeeper_path.front() != '/')

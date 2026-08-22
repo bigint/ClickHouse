@@ -8,6 +8,7 @@ namespace DB
 {
 namespace ErrorCodes
 {
+    extern const int BAD_ARGUMENTS;
     extern const int NO_ZOOKEEPER;
 }
 }
@@ -33,3 +34,22 @@ TEST(ReplicatedAccessStorage, ShutdownWithFailedStartup)
     }
 }
 
+TEST(ReplicatedAccessStorage, RejectsZooKeeperRootPath)
+{
+    auto get_zk = []()
+    {
+        return std::shared_ptr<zkutil::ZooKeeper>();
+    };
+
+    AccessChangesNotifier changes_notifier;
+
+    try
+    {
+        auto storage = ReplicatedAccessStorage("replicated", "/", get_zk, changes_notifier, false, false);
+        FAIL() << "Expected the ZooKeeper root path to be rejected";
+    }
+    catch (const Exception & e)
+    {
+        EXPECT_EQ(ErrorCodes::BAD_ARGUMENTS, e.code());
+    }
+}
