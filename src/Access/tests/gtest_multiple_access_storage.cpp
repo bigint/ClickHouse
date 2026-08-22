@@ -348,6 +348,41 @@ TEST(MultipleAccessStorage, CachedStorageDoesNotOverrideHigherPriorityStorage)
     EXPECT_EQ(storage.getStorage(id), higher_priority_storage);
 }
 
+TEST(MultipleAccessStorage, FindAllOmitsIDsShadowedByAnotherEntityType)
+{
+    AccessChangesNotifier notifier;
+    auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", notifier, true);
+    auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", notifier, true);
+    const auto id = UUIDHelpers::generateV4();
+
+    auto role = std::make_shared<Role>();
+    role->setName("higher_priority_role");
+    higher_priority_storage->insert(id, role, false, true);
+    lower_priority_storage->insert(id, makeUser("lower_priority_user"), false, true);
+
+    MultipleAccessStorage storage;
+    storage.setStorages({higher_priority_storage, lower_priority_storage});
+
+    EXPECT_EQ(storage.findAll<Role>(), std::vector<UUID>{id});
+    EXPECT_TRUE(storage.findAll<User>().empty());
+}
+
+TEST(MultipleAccessStorage, FindAllPreservesDuplicateVisibleEntityIDs)
+{
+    AccessChangesNotifier notifier;
+    auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", notifier, true);
+    auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", notifier, true);
+    const auto id = UUIDHelpers::generateV4();
+
+    higher_priority_storage->insert(id, makeUser("higher_priority_user"), false, true);
+    lower_priority_storage->insert(id, makeUser("lower_priority_user"), false, true);
+
+    MultipleAccessStorage storage;
+    storage.setStorages({higher_priority_storage, lower_priority_storage});
+
+    EXPECT_EQ(storage.findAll<User>(), (std::vector<UUID>{id, id}));
+}
+
 TEST(MultipleAccessStorage, MovePreservesReferencesToMovedEntity)
 {
     AccessChangesNotifier notifier;

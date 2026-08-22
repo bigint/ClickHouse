@@ -150,7 +150,19 @@ std::vector<UUID> MultipleAccessStorage::findAllImpl(AccessEntityType type) cons
     for (const auto & storage : *storages)
     {
         auto ids = storage->findAll(type);
-        all_ids.insert(all_ids.end(), std::make_move_iterator(ids.begin()), std::make_move_iterator(ids.end()));
+        for (const auto & id : ids)
+        {
+            for (const auto & visible_storage : *storages)
+            {
+                auto name_and_type = visible_storage->tryReadNameWithType(id);
+                if (!name_and_type)
+                    continue;
+
+                if (name_and_type->second == type)
+                    all_ids.push_back(id);
+                break;
+            }
+        }
     }
     return all_ids;
 }
