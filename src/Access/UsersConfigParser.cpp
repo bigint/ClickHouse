@@ -102,7 +102,10 @@ namespace
                     if (const auto role = access_control.find<Role>(role_name))
                         role_id = *role;
                     else
+                    {
                         LOG_WARNING(log, "Role {} is not defined and will be ignored for grant query '{}'.", role_name, string_query);
+                        continue;
+                    }
                 }
 
                 roles_to_grant.push_back(role_id);

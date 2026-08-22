@@ -57,6 +57,28 @@ TEST_F(UsersConfigMultipleAuthTest, SinglePlaintextPassword)
     EXPECT_EQ(user->authentication_methods[0].getType(), AuthenticationType::PLAINTEXT_PASSWORD);
 }
 
+TEST_F(UsersConfigMultipleAuthTest, UndefinedRoleGrantIsNotRetained)
+{
+    const auto config = createConfigFromXML(R"(
+        <clickhouse>
+            <users>
+                <test_user>
+                    <password></password>
+                    <grants>
+                        <query>GRANT missing_role</query>
+                    </grants>
+                </test_user>
+            </users>
+        </clickhouse>
+    )");
+
+    storage->setConfig(*config);
+
+    const auto user = storage->tryRead<User>("test_user");
+    ASSERT_TRUE(user);
+    EXPECT_TRUE(user->granted_roles.getGranted().empty());
+}
+
 #if USE_SSL
 TEST_F(UsersConfigMultipleAuthTest, EmptySSLCertificateListIsRejected)
 {
