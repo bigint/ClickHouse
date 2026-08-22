@@ -37,6 +37,8 @@ public:
 private:
     DefinerDependencies() = default;
 
+    void removeDependencyNoLock(const UUID & object_uuid);
+
     std::unordered_map<String, std::unordered_set<UUID>> definer_to_objects;
 
     std::unordered_map<UUID, String> object_to_definer;
