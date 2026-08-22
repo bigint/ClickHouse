@@ -45,6 +45,25 @@ TEST(AuthenticationData, NoAuthenticationRoundTripPreservesValidUntil)
     EXPECT_EQ(restored.getValidUntil(), original.getValidUntil());
 }
 
+TEST(AuthenticationData, MalformedASTIsRejected)
+{
+    ASTAuthenticationData missing_type;
+    EXPECT_THROW(AuthenticationData::fromAST(missing_type, nullptr, false), Exception);
+
+    ASTAuthenticationData missing_password;
+    missing_password.contains_password = true;
+    EXPECT_THROW(AuthenticationData::fromAST(missing_password, nullptr, false), Exception);
+
+    ASTAuthenticationData missing_hash;
+    missing_hash.type = AuthenticationType::SHA256_PASSWORD;
+    missing_hash.contains_hash = true;
+    EXPECT_THROW(AuthenticationData::fromAST(missing_hash, nullptr, false), Exception);
+
+    ASTAuthenticationData missing_server;
+    missing_server.type = AuthenticationType::LDAP;
+    EXPECT_THROW(AuthenticationData::fromAST(missing_server, nullptr, false), Exception);
+}
+
 TEST(AuthenticationData, ScramPasswordHashMustHaveSHA256Length)
 {
     AuthenticationData authentication_data{AuthenticationType::SCRAM_SHA256_PASSWORD};

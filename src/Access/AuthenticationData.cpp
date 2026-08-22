@@ -507,6 +507,9 @@ boost::intrusive_ptr<ASTAuthenticationData> AuthenticationData::toAST() const
 
 AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & query, ContextPtr context, bool validate)
 {
+    if (query.contains_password && query.contains_hash)
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData cannot contain both a password and a hash");
+
     time_t valid_until = 0;
 
     if (query.valid_until)
@@ -567,6 +570,9 @@ AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & que
 
     if (query.contains_password)
     {
+        if (args.empty())
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData with a password has no password argument");
+
         if (!query.type && !context)
             throw Exception(ErrorCodes::LOGICAL_ERROR, "Cannot get default password type without context");
 
@@ -659,11 +665,17 @@ AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & que
         return auth_data;
     }
 
+    if (!query.type)
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData has neither an authentication type nor a password");
+
     AuthenticationData auth_data(*query.type);
     auth_data.setValidUntil(valid_until);
 
     if (query.contains_hash)
     {
+        if (args.empty())
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData with a hash has no hash argument");
+
         String value = checkAndGetLiteralArgument<String>(args[0], "hash");
 
         if (query.type == AuthenticationType::BCRYPT_PASSWORD)
@@ -684,6 +696,9 @@ AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & que
     }
     else if (query.type == AuthenticationType::LDAP)
     {
+        if (args.empty())
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData for LDAP has no server name");
+
         String value = checkAndGetLiteralArgument<String>(args[0], "ldap_server_name");
         auth_data.setLDAPServerName(value);
     }
@@ -698,6 +713,9 @@ AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & que
     else if (query.type == AuthenticationType::SSL_CERTIFICATE)
     {
 #if USE_SSL
+        if (!query.ssl_cert_subject_type)
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData for SSL certificate has no subject type");
+
         auto ssl_cert_subject_type = X509Certificate::Subjects::parseSubjectType(*query.ssl_cert_subject_type);
         for (const auto & arg : args)
             auth_data.addSSLCertificateSubject(ssl_cert_subject_type, checkAndGetLiteralArgument<String>(arg, "ssl_certificate_subject"));
@@ -707,6 +725,9 @@ AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & que
     }
     else if (query.type == AuthenticationType::HTTP)
     {
+        if (args.empty())
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData for HTTP has no server name");
+
         String server = checkAndGetLiteralArgument<String>(args[0], "http_auth_server_name");
         auto scheme = HTTPAuthenticationScheme::BASIC;  // Default scheme
 
