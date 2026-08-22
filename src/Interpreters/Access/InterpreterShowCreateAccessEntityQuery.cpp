@@ -21,9 +21,9 @@
 #include <Access/QuotaUsage.h>
 #include <Access/Role.h>
 #include <Access/RowPolicy.h>
+#include <Access/MaskingPolicy.h>
 #include <Access/SettingsProfile.h>
 #include <Access/User.h>
-#include <Access/MaskingPolicy.h>
 #include <Columns/ColumnString.h>
 #include <Common/StringUtils.h>
 #include <Core/Defines.h>
@@ -234,6 +234,35 @@ namespace
         return query;
     }
 
+
+    ASTPtr getCreateQueryImpl(
+        const MaskingPolicy & policy,
+        const AccessControl * access_control /* not used if attach_mode == true */,
+        bool attach_mode)
+    {
+        auto query = make_intrusive<ASTCreateMaskingPolicyQuery>();
+        query->name = policy.getShortName();
+        query->database = policy.getDatabase();
+        query->table_name = policy.getTableName();
+        query->attach = attach_mode;
+        query->priority = policy.priority;
+
+        if (policy.update_assignments)
+            query->update_assignments = policy.update_assignments->clone();
+        if (policy.where_condition)
+            query->where_condition = policy.where_condition->clone();
+
+        if (!policy.to_roles.empty())
+        {
+            if (attach_mode)
+                query->roles = policy.to_roles.toAST();
+            else
+                query->roles = policy.to_roles.toASTWithNames(*access_control);
+        }
+
+        return query;
+    }
+
     ASTPtr getCreateQueryImpl(
         const IAccessEntity & entity,
         const AccessControl * access_control /* not used if attach_mode == true */,
@@ -249,6 +278,8 @@ namespace
             return getCreateQueryImpl(*quota, access_control, attach_mode);
         if (const SettingsProfile * profile = typeid_cast<const SettingsProfile *>(&entity))
             return getCreateQueryImpl(*profile, access_control, attach_mode);
+        if (const MaskingPolicy * masking_policy = typeid_cast<const MaskingPolicy *>(&entity))
+            return getCreateQueryImpl(*masking_policy, access_control, attach_mode);
         throw Exception(ErrorCodes::NOT_IMPLEMENTED, "{}: type is not supported by SHOW CREATE query", entity.formatTypeWithName());
     }
 }

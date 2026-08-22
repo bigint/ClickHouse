@@ -4,6 +4,7 @@
 #include <Access/AccessControl.h>
 #include <Access/AccessEntityIO.h>
 #include <Access/DiskAccessStorage.h>
+#include <Access/MaskingPolicy.h>
 #include <Access/Role.h>
 #include <Access/User.h>
 #include <Core/UUID.h>
@@ -33,6 +34,19 @@ void writeNeedRebuildMarker(const String & directory)
     std::ofstream{directory + "need_rebuild_lists.mark"};
 }
 
+}
+
+TEST(AccessEntityIO, MaskingPolicyRoundTrip)
+{
+    MaskingPolicy original;
+    original.setFullName("mask", "database", "table");
+    original.priority = 7;
+    original.to_roles = RolesOrUsersSet::AllTag{};
+
+    const auto restored = deserializeAccessEntity(serializeAccessEntity(original));
+
+    ASSERT_EQ(restored->getType(), AccessEntityType::MASKING_POLICY);
+    EXPECT_EQ(*restored, original);
 }
 
 TEST(DiskAccessStorageRecovery, RebuildRemovesTempFiles)

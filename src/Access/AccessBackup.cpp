@@ -6,6 +6,7 @@
 #include <Access/Role.h>
 #include <Access/SettingsProfile.h>
 #include <Access/RowPolicy.h>
+#include <Access/MaskingPolicy.h>
 #include <Access/Quota.h>
 #include <Backups/BackupEntriesCollector.h>
 #include <Backups/BackupEntryFromMemory.h>
@@ -458,6 +459,12 @@ AccessRightsElements AccessRestorerFromBackup::getRequiredAccess() const
             case Quota::TYPE:
             {
                 res.emplace_back(AccessType::CREATE_QUOTA);
+                break;
+            }
+
+            case MaskingPolicy::TYPE:
+            {
+                res.emplace_back(AccessType::CREATE_MASKING_POLICY);
                 break;
             }
 

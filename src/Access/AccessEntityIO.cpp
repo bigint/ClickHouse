@@ -1,6 +1,7 @@
 #include <Access/AccessEntityIO.h>
 #include <Access/IAccessEntity.h>
 #include <Access/IAccessStorage.h>
+#include <Access/MaskingPolicy.h>
 #include <Access/Quota.h>
 #include <Access/Role.h>
 #include <Access/RowPolicy.h>
@@ -19,6 +20,7 @@
 #include <Parsers/Access/ASTCreateQuotaQuery.h>
 #include <Parsers/Access/ASTCreateRoleQuery.h>
 #include <Parsers/Access/ASTCreateRowPolicyQuery.h>
+#include <Parsers/Access/ASTCreateMaskingPolicyQuery.h>
 #include <Parsers/Access/ASTCreateSettingsProfileQuery.h>
 #include <Parsers/Access/ASTCreateUserQuery.h>
 #include <Parsers/Access/ASTGrantQuery.h>
@@ -70,6 +72,7 @@ static AccessEntityPtr deserializeAccessEntityImpl(const String & definition)
     std::shared_ptr<User> user;
     std::shared_ptr<Role> role;
     std::shared_ptr<RowPolicy> policy;
+    std::shared_ptr<MaskingPolicy> masking_policy;
     std::shared_ptr<Quota> quota;
     std::shared_ptr<SettingsProfile> profile;
     AccessEntityPtr res;
@@ -96,6 +99,23 @@ static AccessEntityPtr deserializeAccessEntityImpl(const String & definition)
                 throw Exception(ErrorCodes::INCORRECT_ACCESS_ENTITY_DEFINITION, "Two access entities attached in the same file");
             res = policy = std::make_unique<RowPolicy>();
             InterpreterCreateRowPolicyQuery::updateRowPolicyFromQuery(*policy, *create_policy_query);
+        }
+        else if (auto * create_masking_policy_query = query->as<ASTCreateMaskingPolicyQuery>())
+        {
+            if (res)
+                throw Exception(ErrorCodes::INCORRECT_ACCESS_ENTITY_DEFINITION, "Two access entities attached in the same file");
+            res = masking_policy = std::make_unique<MaskingPolicy>();
+            masking_policy->setFullName(
+                create_masking_policy_query->name,
+                create_masking_policy_query->database,
+                create_masking_policy_query->table_name);
+            if (create_masking_policy_query->update_assignments)
+                masking_policy->update_assignments = create_masking_policy_query->update_assignments->clone();
+            if (create_masking_policy_query->where_condition)
+                masking_policy->where_condition = create_masking_policy_query->where_condition->clone();
+            masking_policy->priority = create_masking_policy_query->priority;
+            if (create_masking_policy_query->roles)
+                masking_policy->to_roles = *create_masking_policy_query->roles;
         }
         else if (auto * create_quota_query = query->as<ASTCreateQuotaQuery>())
         {
