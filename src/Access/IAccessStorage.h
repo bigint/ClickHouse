@@ -265,6 +265,9 @@ protected:
     /// and swallowed so a single broken or read-only entity cannot block the cascade.
     /// Called automatically after a successful `remove`.
     void removeReferencesToRemovedIDs(const std::unordered_set<UUID> & removed_ids);
+    /// Removes entities while preserving references to their IDs. Used when the entities
+    /// are transferred to another storage with the same IDs rather than dropped.
+    static void removeWithoutDependencyCleanup(IAccessStorage & storage, const std::vector<UUID> & ids);
     static String formatEntityTypeWithName(AccessEntityType type, const String & name) { return AccessEntityTypeInfo::get(type).formatEntityNameWithType(name); }
     static void clearConflictsInEntitiesList(std::vector<std::pair<UUID, AccessEntityPtr>> & entities, LoggerPtr log_);
     virtual bool acquireReplicatedRestore(RestorerFromBackup &) const { return false; }

@@ -415,6 +415,14 @@ std::vector<UUID> IAccessStorage::remove(const std::vector<UUID> & ids, bool thr
 }
 
 
+void IAccessStorage::removeWithoutDependencyCleanup(IAccessStorage & storage, const std::vector<UUID> & ids)
+{
+    ++remove_depth;
+    SCOPE_EXIT(--remove_depth);
+    storage.remove(ids);
+}
+
+
 void IAccessStorage::removeReferencesToRemovedIDs(const std::unordered_set<UUID> & removed_ids)
 {
     if (removed_ids.empty())

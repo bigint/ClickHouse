@@ -3,6 +3,7 @@
 #include <Access/AccessChangesNotifier.h>
 #include <Access/MemoryAccessStorage.h>
 #include <Access/MultipleAccessStorage.h>
+#include <Access/Role.h>
 #include <Access/User.h>
 
 
@@ -44,4 +45,28 @@ TEST(MultipleAccessStorage, CollisionCheckUsesEntityReturnedToNestedStorage)
 
     EXPECT_EQ(update_calls, 1u);
     EXPECT_EQ(lower_priority_storage->read<User>(lower_priority_id)->getName(), "available_name");
+}
+
+TEST(MultipleAccessStorage, MovePreservesReferencesToMovedEntity)
+{
+    AccessChangesNotifier notifier;
+    auto source_storage = std::make_shared<MemoryAccessStorage>("source", notifier, true);
+    auto destination_storage = std::make_shared<MemoryAccessStorage>("destination", notifier, true);
+
+    auto role = std::make_shared<Role>();
+    role->setName("moved_role");
+    const auto role_id = source_storage->insert(role);
+
+    auto user = std::make_shared<User>();
+    user->setName("dependent_user");
+    user->granted_roles.grant(role_id);
+    const auto user_id = source_storage->insert(user);
+
+    MultipleAccessStorage storage;
+    storage.setStorages({source_storage, destination_storage});
+    storage.moveAccessEntities({role_id}, source_storage->getStorageName(), destination_storage->getStorageName());
+
+    EXPECT_FALSE(source_storage->exists(role_id));
+    EXPECT_TRUE(destination_storage->exists(role_id));
+    EXPECT_TRUE(source_storage->read<User>(user_id)->granted_roles.isGranted(role_id));
 }
