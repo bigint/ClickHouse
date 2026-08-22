@@ -68,6 +68,30 @@ TEST(QuotaCache, PreservesPerNormalizedHashUsageOnUpdate)
     EXPECT_THROW(enabled_quota->usedPerNormalizedHash(42), Exception);
 }
 
+TEST(QuotaCache, NormalizedHashKeySharesPerHashLimitAcrossUsers)
+{
+    AccessControl access_control;
+    auto storage = std::make_shared<MemoryAccessStorage>("memory", access_control.getChangesNotifier(), true);
+    access_control.setStorages({storage});
+
+    auto quota = std::make_shared<Quota>();
+    quota->setName("normalized_hash_quota");
+    quota->key_type = QuotaKeyType::NORMALIZED_QUERY_HASH;
+    quota->to_roles = RolesOrUsersSet::AllTag{};
+    auto & limits = quota->all_limits.emplace_back();
+    limits.duration = std::chrono::minutes(1);
+    limits.max[static_cast<size_t>(QuotaType::QUERIES_PER_NORMALIZED_HASH)] = 1;
+    access_control.insert(quota);
+
+    auto first_user_quota = access_control.getEnabledQuota(
+        UUIDHelpers::generateV4(), "first_user", {}, std::make_shared<Poco::Net::IPAddress>("127.0.0.1"), "", "");
+    auto second_user_quota = access_control.getEnabledQuota(
+        UUIDHelpers::generateV4(), "second_user", {}, std::make_shared<Poco::Net::IPAddress>("127.0.0.1"), "", "");
+
+    first_user_quota->usedPerNormalizedHash(42);
+    EXPECT_THROW(second_user_quota->usedPerNormalizedHash(42), Exception);
+}
+
 TEST(QuotaCache, RejectedQueryIsAccountedToEveryMatchingQuota)
 {
     AccessControl access_control;

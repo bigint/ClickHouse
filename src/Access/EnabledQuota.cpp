@@ -358,10 +358,19 @@ void EnabledQuota::usedPerNormalizedHash(UInt64 normalized_query_hash) const
         return;
     auto loaded = quotas.load();
     auto current_time = std::chrono::system_clock::now();
+    std::vector<boost::shared_ptr<const Intervals>> targets;
+    targets.reserve(loaded->size());
     for (const auto & quota : *loaded)
-        Impl::usedPerNormalizedHash(*quota->intervals, normalized_query_hash, current_time);
-    for (const auto & quota : *loaded)
-        Impl::checkExceeded(getUserName(), *quota->intervals, QuotaType::QUERIES_PER_NORMALIZED_HASH, current_time);
+    {
+        auto target = resolveTargetIntervals(*quota, normalized_query_hash);
+        if (target)
+        {
+            Impl::usedPerNormalizedHash(*target, normalized_query_hash, current_time);
+            targets.push_back(std::move(target));
+        }
+    }
+    for (const auto & target : targets)
+        Impl::checkExceeded(getUserName(), *target, QuotaType::QUERIES_PER_NORMALIZED_HASH, current_time);
 }
 
 

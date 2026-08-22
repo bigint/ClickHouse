@@ -135,8 +135,8 @@ private:
     {
         /// Session-level intervals. For most key types these hold the counters directly.
         /// For `NORMALIZED_QUERY_HASH` quotas the actual counters are resolved lazily per query
-        /// hash (see `interval_resolver`); these intervals then only carry the shared
-        /// `QUERIES_PER_NORMALIZED_HASH` bookkeeping.
+        /// hash (see `interval_resolver`); these intervals are used only by operations which do
+        /// not have a query hash, such as authentication quota accounting.
         boost::shared_ptr<const Intervals> intervals;
 
         /// Non-null only for `NORMALIZED_QUERY_HASH` quotas: resolves intervals per query hash.
