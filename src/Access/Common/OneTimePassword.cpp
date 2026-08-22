@@ -145,7 +145,7 @@ static String getOneTimePassword(const String & secret [[ maybe_unused ]], const
 bool checkOneTimePassword(std::string_view password, const OneTimePasswordSecret & secret)
 {
     if (password.size() != static_cast<size_t>(secret.params.num_digits)
-     || !std::all_of(password.begin(), password.end(), ::isdigit))
+     || !std::ranges::all_of(password, [](unsigned char c) { return std::isdigit(c); }))
         return false;
 
     auto current_time = static_cast<UInt64>(std::time(nullptr));

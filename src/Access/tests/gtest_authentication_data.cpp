@@ -54,6 +54,15 @@ TEST(AuthenticationData, ScramPasswordHashMustHaveSHA256Length)
     EXPECT_THROW(authentication_data.setPasswordHashBinary(AuthenticationData::Digest(33), std::nullopt, false), Exception);
 }
 
+TEST(Authentication, OneTimePasswordRejectsNonASCIIBytes)
+{
+    const OneTimePasswordSecret secret{"JBSWY3DPEHPK3PXP"};
+    String password(secret.params.num_digits, '1');
+    password.front() = static_cast<char>(0xFF);
+
+    EXPECT_FALSE(checkOneTimePassword(password, secret));
+}
+
 #if USE_SSL
 TEST(Authentication, ScramCredentialsRejectOtherAuthenticationTypes)
 {

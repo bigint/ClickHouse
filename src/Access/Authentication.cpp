@@ -163,7 +163,7 @@ namespace
         size_t separator_pos = password_with_otp.size() - num_digits - 1;
         if (password_with_otp[separator_pos] != '+')
             return {password_with_otp, ""};
-        if (!std::ranges::all_of(password_with_otp.substr(separator_pos + 1), [](char c) { return std::isdigit(c); }))
+        if (!std::ranges::all_of(password_with_otp.substr(separator_pos + 1), [](unsigned char c) { return std::isdigit(c); }))
             return {password_with_otp, ""};
         return {password_with_otp.substr(0, separator_pos), password_with_otp.substr(separator_pos + 1)};
     }
