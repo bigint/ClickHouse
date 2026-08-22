@@ -278,6 +278,39 @@ def test_new_user(started_cluster):
     cur.execute(f"DROP DATABASE {db_id}")
 
 
+def test_scram_user_with_later_sha256_method(started_cluster):
+    node = cluster.instances["node"]
+    user_name = f"scram_mixed_{random.randint(0, 1000000)}"
+
+    admin = py_psql.connect(
+        host=node.ip_address,
+        port=server_port,
+        user="default",
+        password="123",
+        database="",
+    )
+    admin_cursor = admin.cursor()
+    admin_cursor.execute(
+        f"CREATE USER {user_name} IDENTIFIED WITH scram_sha256_password BY 'scram_password'"
+    )
+    admin_cursor.execute(
+        f"ALTER USER {user_name} ADD IDENTIFIED WITH sha256_password BY 'sha256_password'"
+    )
+
+    authenticated = py_psql.connect(
+        host=node.ip_address,
+        port=server_port,
+        user=user_name,
+        password="scram_password",
+        database="default",
+    )
+    cursor = authenticated.cursor()
+    cursor.execute("SELECT currentUser()")
+    assert cursor.fetchall() == [(user_name,)]
+
+    admin_cursor.execute(f"DROP USER {user_name}")
+
+
 def test_python_client(started_cluster):
     node = cluster.instances["node"]
 

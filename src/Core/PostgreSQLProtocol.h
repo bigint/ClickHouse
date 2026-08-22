@@ -1638,7 +1638,8 @@ public:
             {
                 for (const auto & auth_method : user->authentication_methods)
                 {
-                    salt = auth_method.getSalt();
+                    if (auth_method.getType() == AuthenticationType::SCRAM_SHA256_PASSWORD)
+                        salt = auth_method.getSalt();
                 }
             }
         }
