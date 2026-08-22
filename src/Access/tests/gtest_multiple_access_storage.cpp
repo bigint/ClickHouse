@@ -2,12 +2,16 @@
 
 #include <Access/AccessChangesNotifier.h>
 #include <Access/AccessControl.h>
+#include <Access/Credentials.h>
+#include <Access/ExternalAuthenticators.h>
 #include <Access/MemoryAccessStorage.h>
 #include <Access/MultipleAccessStorage.h>
 #include <Access/Role.h>
 #include <Access/User.h>
 #include <Core/UUID.h>
 #include <Common/Exception.h>
+#include <Interpreters/ClientInfo.h>
+#include <Poco/Net/IPAddress.h>
 
 #include <chrono>
 #include <future>
@@ -28,6 +32,15 @@ AccessEntityPtr makeUser(const String & name)
 {
     auto user = std::make_shared<User>();
     user->setName(name);
+    return user;
+}
+
+AccessEntityPtr makePasswordUser(const String & name, const String & password)
+{
+    auto user = std::make_shared<User>();
+    user->setName(name);
+    auto & authentication = user->authentication_methods.emplace_back(AuthenticationType::PLAINTEXT_PASSWORD);
+    authentication.setPassword(password, std::nullopt, true);
     return user;
 }
 
@@ -417,6 +430,36 @@ TEST(MultipleAccessStorage, FindSkipsCandidateWhoseIDIsShadowed)
 
     EXPECT_EQ(storage.find<User>("target_user"), visible_user_id);
     EXPECT_EQ(storage.findAll<User>(), std::vector<UUID>{visible_user_id});
+}
+
+TEST(MultipleAccessStorage, AuthenticationSkipsUserWhoseIDIsShadowed)
+{
+    AccessChangesNotifier notifier;
+    auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", notifier, true);
+    auto middle_priority_storage = std::make_shared<MemoryAccessStorage>("middle_priority", notifier, true);
+    auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", notifier, true);
+
+    const auto shadowed_id = UUIDHelpers::generateV4();
+    auto higher_priority_role = std::make_shared<Role>();
+    higher_priority_role->setName("role_with_same_id");
+    higher_priority_storage->insert(shadowed_id, higher_priority_role, false, true);
+    middle_priority_storage->insert(shadowed_id, makePasswordUser("target_user", "hidden_password"), false, true);
+    const auto visible_user_id = lower_priority_storage->insert(makePasswordUser("target_user", "visible_password"));
+
+    MultipleAccessStorage storage;
+    storage.setStorages({higher_priority_storage, middle_priority_storage, lower_priority_storage});
+
+    BasicCredentials credentials("target_user", "visible_password");
+    ExternalAuthenticators external_authenticators;
+    ClientInfo client_info;
+    auto result = storage.authenticate(
+        credentials,
+        Poco::Net::IPAddress("127.0.0.1"),
+        external_authenticators,
+        client_info,
+        /* allow_no_password= */ true,
+        /* allow_plaintext_password= */ true);
+    EXPECT_EQ(result.user_id, visible_user_id);
 }
 
 TEST(MultipleAccessStorage, MovePreservesReferencesToMovedEntity)

@@ -632,12 +632,43 @@ MultipleAccessStorage::authenticateImpl(const Credentials & credentials, const P
     for (size_t i = 0; i != storages->size(); ++i)
     {
         const auto & storage = (*storages)[i];
+
+        /// Do not authenticate an entity which the composite cannot expose: a higher-priority
+        /// entity with the same ID owns that ID even if it has another type. Check before
+        /// authentication so a hidden user's password cannot shadow a visible lower user.
+        if (auto candidate_id = storage->find(AccessEntityType::USER, credentials.getUserName()))
+        {
+            bool id_is_shadowed = false;
+            for (size_t higher = 0; higher != i; ++higher)
+            {
+                if ((*storages)[higher]->exists(*candidate_id))
+                {
+                    id_is_shadowed = true;
+                    break;
+                }
+            }
+            if (id_is_shadowed)
+                continue;
+        }
+
         bool is_last_storage = (i == storages->size() - 1);
         auto auth_result = storage->authenticate(credentials, address, external_authenticators, client_info,
                                         (throw_if_user_not_exists && is_last_storage),
                                         allow_no_password, allow_plaintext_password);
         if (auth_result)
         {
+            bool id_is_shadowed = false;
+            for (size_t higher = 0; higher != i; ++higher)
+            {
+                if ((*storages)[higher]->exists(auth_result->user_id))
+                {
+                    id_is_shadowed = true;
+                    break;
+                }
+            }
+            if (id_is_shadowed)
+                continue;
+
             std::lock_guard lock{mutex};
             ids_cache.set(auth_result->user_id, storage);
             return auth_result;
