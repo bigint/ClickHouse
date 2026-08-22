@@ -1,19 +1,20 @@
-#include <Access/RowPolicyCache.h>
 #include <Access/AccessControl.h>
 #include <Access/EnabledRowPolicies.h>
 #include <Access/RowPolicy.h>
+#include <Access/RowPolicyCache.h>
+#include <Core/Defines.h>
+#include <Parsers/ASTLiteral.h>
 #include <Parsers/ExpressionListParsers.h>
-#include <Parsers/parseQuery.h>
 #include <Parsers/makeASTForLogicalFunction.h>
+#include <Parsers/parseQuery.h>
+#include <base/range.h>
+#include <boost/smart_ptr/make_shared.hpp>
 #include <Common/Exception.h>
 #include <Common/Logger.h>
 #include <Common/ProfileEvents.h>
 #include <Common/Stopwatch.h>
 #include <Common/logger_useful.h>
 #include <Common/quoteString.h>
-#include <base/range.h>
-#include <boost/smart_ptr/make_shared.hpp>
-#include <Core/Defines.h>
 
 
 namespace ProfileEvents
@@ -104,6 +105,9 @@ void RowPolicyCache::PolicyInfo::setPolicy(const RowPolicyPtr & policy_)
                 getLogger("RowPolicy"),
                 String("Could not parse the condition ") + toString(filter_type) + " of row policy "
                     + backQuote(policy->getName()));
+            /// A malformed restrictive policy must not disappear from the mix and widen access.
+            /// Represent every parse failure as an explicit `false` predicate so it fails closed.
+            parsed_filters[filter_type_i] = make_intrusive<ASTLiteral>(Field{static_cast<UInt8>(0)});
         }
     }
 }
