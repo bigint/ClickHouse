@@ -1,4 +1,5 @@
 import inspect
+import uuid
 from dataclasses import dataclass
 from os import path as p
 
@@ -209,6 +210,38 @@ def test_rename_replicated(started_cluster, entity):
     )
     node1.query("SYSTEM RELOAD USERS")
     node1.query(f"DROP {entity.keyword} {entity.name}2 {entity.options}")
+
+
+def test_recreated_uuid_refreshes_cached_entity(started_cluster):
+    role_name = f"recreated_role_{uuid.uuid4().hex[:8]}"
+    node1.query(f"CREATE ROLE {role_name}")
+    assert_eq_with_retry(
+        node2,
+        f"SELECT name FROM system.roles WHERE name = '{role_name}'",
+        f"{role_name}\n",
+    )
+
+    zk = cluster.get_kazoo_client("zoo1")
+    role_uuid = zk.get(f"/clickhouse/access/R/{role_name}")[0].decode("utf-8")
+    entity_path = f"/clickhouse/access/uuid/{role_uuid}"
+    original_data = zk.get(entity_path)[0]
+    updated_data = original_data + f"ATTACH GRANT SELECT ON system.one TO {role_name};\n".encode()
+
+    try:
+        transaction = zk.transaction()
+        transaction.delete(entity_path)
+        transaction.create(entity_path, updated_data)
+        transaction.commit()
+
+        assert_eq_with_retry(
+            node2,
+            f"SHOW GRANTS FOR {role_name}",
+            f"GRANT SELECT ON system.one TO {role_name}\n",
+        )
+    finally:
+        if zk.exists(entity_path):
+            zk.set(entity_path, original_data)
+        node1.query_with_retry(f"DROP ROLE IF EXISTS {role_name}")
 
 
 # ReplicatedAccessStorage must be able to continue working after reloading ZooKeeper.

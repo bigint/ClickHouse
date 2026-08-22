@@ -723,7 +723,10 @@ AccessEntityPtr ZooKeeperReplicator::tryReadEntityFromZooKeeper(const zkutil::Zo
     {
         return [my_watched_queue = watched_queue, id](const Coordination::WatchResponse & response)
         {
-            if (response.type == Coordination::Event::CHANGED)
+            /// A deleted UUID can be recreated before the parent-list refresh runs. In that case
+            /// the list still contains the same UUID and does not identify it as new, so refresh
+            /// this entity directly for both changes and deletions.
+            if (response.type == Coordination::Event::CHANGED || response.type == Coordination::Event::DELETED)
                 [[maybe_unused]] bool push_result = my_watched_queue->push(id);
         };
     });
