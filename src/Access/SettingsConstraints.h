@@ -40,17 +40,15 @@ public:
 
     void setAllowTierSettings(UInt32 value);
     UInt32 getAllowTierSettings() const;
-    bool getAllowExperimentalTierSettings() const { return allow_experimental_tier_settings; }
-    bool getAllowPrivatePreviewTierSettings() const { return allow_private_preview_tier_settings; }
-    bool getAllowBetaTierSettings() const { return allow_beta_tier_settings; }
+    bool getAllowExperimentalTierSettings() const { return getAllowTierSettings() == 0; }
+    bool getAllowPrivatePreviewTierSettings() const { return getAllowTierSettings() <= 1; }
+    bool getAllowBetaTierSettings() const { return getAllowTierSettings() <= 2; }
 
 private:
     Strings custom_settings_prefixes TSA_GUARDED_BY(custom_settings_prefixes_mutex);
     mutable std::mutex custom_settings_prefixes_mutex;
     std::atomic_bool replace_previous = false;
-    std::atomic_bool allow_experimental_tier_settings = true;
-    std::atomic_bool allow_private_preview_tier_settings = true;
-    std::atomic_bool allow_beta_tier_settings = true;
+    std::atomic<UInt32> allow_tier_settings = 0;
 };
 
 

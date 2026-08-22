@@ -9,6 +9,7 @@
 #include <Common/SettingSource.h>
 #include <IO/WriteHelpers.h>
 
+#include <algorithm>
 #include <bitset>
 #include <string_view>
 #include <unordered_map>
@@ -134,20 +135,12 @@ void SettingsConstraintsPolicy::checkSettingNameIsAllowed(std::string_view setti
 
 void SettingsConstraintsPolicy::setAllowTierSettings(UInt32 value)
 {
-    allow_experimental_tier_settings = value == 0;
-    allow_private_preview_tier_settings = value <= 1;
-    allow_beta_tier_settings = value <= 2;
+    allow_tier_settings = std::min(value, UInt32{3});
 }
 
 UInt32 SettingsConstraintsPolicy::getAllowTierSettings() const
 {
-    if (allow_experimental_tier_settings)
-        return 0;
-    if (allow_private_preview_tier_settings)
-        return 1;
-    if (allow_beta_tier_settings)
-        return 2;
-    return 3;
+    return allow_tier_settings;
 }
 
 SettingsConstraints::SettingsConstraints(const AccessControl & access_control_)
