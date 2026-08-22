@@ -407,6 +407,21 @@ void ContextAccess::setUser(const UserPtr & user_, scope_guard & obsolete_subscr
         return;
     }
 
+    /// Invalidate the previously derived authorization state before any operation below can
+    /// throw. Notification handlers log those exceptions instead of propagating them to the
+    /// session, so retaining old grants here would leave the session authorized by stale data.
+    obsolete_subscriptions.join(std::move(subscription_for_roles_changes));
+    enabled_roles = nullptr;
+    roles_info = nullptr;
+    access = nullptr;
+    access_with_implicit = nullptr;
+    enabled_row_policies = nullptr;
+#if CLICKHOUSE_CLOUD
+    enabled_masking_policies = nullptr;
+#endif
+    enabled_quota = nullptr;
+    enabled_settings = nullptr;
+
     user_name = user->getName();
     trace_log = getLogger("ContextAccess (" + user_name + ")");
 
@@ -430,16 +445,22 @@ void ContextAccess::setUser(const UserPtr & user_, scope_guard & obsolete_subscr
         current_roles_with_admin_option.insert(current_roles_with_admin_option.end(), new_granted_with_admin_option.begin(), new_granted_with_admin_option.end());
     }
 
-    obsolete_subscriptions.join(std::move(subscription_for_roles_changes));
     enabled_roles = access_control->getEnabledRoles(current_roles, current_roles_with_admin_option);
-    subscription_for_roles_changes = enabled_roles->subscribeForChanges([weak_ptr = weak_from_this()](const std::shared_ptr<const EnabledRolesInfo> & roles_info_)
-    {
-        auto ptr = weak_ptr.lock();
-        if (!ptr)
-            return;
-        std::lock_guard lock{ptr->mutex};
-        ptr->setRolesInfo(roles_info_);
-    });
+    std::weak_ptr<const EnabledRoles> subscribed_enabled_roles = enabled_roles;
+    subscription_for_roles_changes = enabled_roles->subscribeForChanges(
+        [weak_ptr = weak_from_this(), subscribed_enabled_roles](const std::shared_ptr<const EnabledRolesInfo> & roles_info_)
+        {
+            auto ptr = weak_ptr.lock();
+            auto source = subscribed_enabled_roles.lock();
+            if (!ptr || !source)
+                return;
+            std::lock_guard lock{ptr->mutex};
+            /// Cancellation waits outside `mutex`, so a callback from the previous enabled-role
+            /// set can already be queued while the user is refreshed. Ignore that obsolete value.
+            if (ptr->enabled_roles != source)
+                return;
+            ptr->setRolesInfo(roles_info_);
+        });
 
     setRolesInfo(enabled_roles->getRolesInfo());
 
