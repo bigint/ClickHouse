@@ -56,7 +56,7 @@ public:
 
     /// Sets the server name for authentication type LDAP.
     const String & getLDAPServerName() const { return ldap_server_name; }
-    void setLDAPServerName(const String & name) { ldap_server_name = name; }
+    void setLDAPServerName(const String & name);
 
     /// Sets the realm name for authentication type KERBEROS.
     const String & getKerberosRealm() const { return kerberos_realm; }
@@ -77,7 +77,7 @@ public:
     void setHTTPAuthenticationScheme(HTTPAuthenticationScheme scheme) { http_auth_scheme = scheme; }
 
     const String & getHTTPAuthenticationServerName() const { return http_auth_server_name; }
-    void setHTTPAuthenticationServerName(const String & name) { http_auth_server_name = name; }
+    void setHTTPAuthenticationServerName(const String & name);
 
     time_t getValidUntil() const { return valid_until; }
     void setValidUntil(time_t valid_until_) { valid_until = valid_until_; }

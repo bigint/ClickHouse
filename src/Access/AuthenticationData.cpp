@@ -374,6 +374,20 @@ String AuthenticationData::getSalt() const
     return salt;
 }
 
+void AuthenticationData::setLDAPServerName(const String & name)
+{
+    if (name.empty())
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "LDAP server name cannot be empty");
+    ldap_server_name = name;
+}
+
+void AuthenticationData::setHTTPAuthenticationServerName(const String & name)
+{
+    if (name.empty())
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "HTTP authentication server name cannot be empty");
+    http_auth_server_name = name;
+}
+
 #if USE_SSL
 void AuthenticationData::setSSLCertificateSubjects(X509Certificate::Subjects && ssl_certificate_subjects_)
 {

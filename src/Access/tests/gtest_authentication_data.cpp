@@ -110,6 +110,19 @@ TEST(AuthenticationData, SurplusASTArgumentsAreRejected)
     EXPECT_THROW(AuthenticationData::fromAST(no_password_with_flag, nullptr, false), Exception);
 }
 
+TEST(AuthenticationData, EmptyExternalAuthenticatorNamesAreRejected)
+{
+    ASTAuthenticationData ldap;
+    ldap.type = AuthenticationType::LDAP;
+    ldap.children.push_back(make_intrusive<ASTLiteral>(String{}));
+    EXPECT_THROW(AuthenticationData::fromAST(ldap, nullptr, false), Exception);
+
+    ASTAuthenticationData http;
+    http.type = AuthenticationType::HTTP;
+    http.children.push_back(make_intrusive<ASTLiteral>(String{}));
+    EXPECT_THROW(AuthenticationData::fromAST(http, nullptr, false), Exception);
+}
+
 TEST(AuthenticationData, ScramPasswordHashMustHaveSHA256Length)
 {
     AuthenticationData authentication_data{AuthenticationType::SCRAM_SHA256_PASSWORD};
