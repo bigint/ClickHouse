@@ -7,6 +7,7 @@
 #include <Poco/Util/XMLConfiguration.h>
 
 #include <sstream>
+#include <stdexcept>
 
 
 namespace DB
@@ -17,6 +18,12 @@ struct ExternalAuthenticatorsTestAccess
     static HTTPAuthClientParams getHTTPAuthenticationParams(const ExternalAuthenticators & authenticators, const String & server)
     {
         return authenticators.getHTTPAuthenticationParams(server);
+    }
+
+    static LDAPClient::Params getLDAPParams(const ExternalAuthenticators & authenticators, const String & server)
+    {
+        std::lock_guard lock(authenticators.mutex);
+        return authenticators.ldap_client_params_blueprint.at(server);
     }
 };
 
@@ -68,6 +75,24 @@ TEST(ExternalAuthenticators, RejectsInitialBackoffAboveMaximum)
     authenticators.setConfiguration(*config, getLogger("ExternalAuthenticatorsBackoffTest"));
 
     EXPECT_THROW(ExternalAuthenticatorsTestAccess::getHTTPAuthenticationParams(authenticators, "primary"), Exception);
+}
+
+TEST(ExternalAuthenticators, RejectsLDAPSearchLimitAboveAPIRange)
+{
+    ExternalAuthenticators authenticators;
+    const auto config = createConfig(R"(
+        <clickhouse>
+            <ldap_servers>
+                <primary>
+                    <host>127.0.0.1</host>
+                    <search_limit>2147483648</search_limit>
+                </primary>
+            </ldap_servers>
+        </clickhouse>
+    )");
+    authenticators.setConfiguration(*config, getLogger("ExternalAuthenticatorsLDAPLimitTest"));
+
+    EXPECT_THROW(ExternalAuthenticatorsTestAccess::getLDAPParams(authenticators, "primary"), std::out_of_range);
 }
 
 }

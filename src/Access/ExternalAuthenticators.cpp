@@ -12,6 +12,7 @@
 
 #include <Poco/Util/AbstractConfiguration.h>
 
+#include <limits>
 #include <optional>
 #include <utility>
 
@@ -199,7 +200,15 @@ void parseLDAPServer(LDAPClient::Params & params, const Poco::Util::AbstractConf
         params.port = (params.enable_tls == LDAPClient::Params::TLSEnable::YES ? 636 : 389);
 
     if (has_search_limit)
-        params.search_limit = static_cast<UInt32>(config.getUInt64(ldap_server_config + ".search_limit"));
+    {
+        const auto search_limit = config.getUInt64(ldap_server_config + ".search_limit");
+        if (search_limit > static_cast<UInt64>(std::numeric_limits<int>::max()))
+            throw Exception(
+                ErrorCodes::BAD_ARGUMENTS,
+                "Bad value for 'search_limit' entry: must not exceed {}",
+                std::numeric_limits<int>::max());
+        params.search_limit = static_cast<UInt32>(search_limit);
+    }
 
     if (has_follow_referrals)
         params.follow_referrals = config.getBool(ldap_server_config + ".follow_referrals");
