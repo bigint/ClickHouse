@@ -74,6 +74,36 @@ TEST(SettingsProfilesCache, DefaultProfileChangeRefreshesExistingEnabledSettings
     EXPECT_TRUE(enabled_settings->getInfo()->profiles_with_implicit.empty());
 }
 
+TEST(SettingsProfilesCache, DefaultProfileTracksConfiguredName)
+{
+    AccessControl access_control;
+    auto storage = std::make_shared<MemoryAccessStorage>("memory", access_control.getChangesNotifier(), true);
+    access_control.setStorages({storage});
+
+    auto original_profile = std::make_shared<SettingsProfile>();
+    original_profile->setName("configured");
+    const auto original_id = access_control.insert(original_profile);
+
+    access_control.setDefaultProfileName("configured");
+    auto enabled_settings = access_control.getEnabledSettings(UUIDHelpers::generateV4(), {}, {}, {});
+    EXPECT_EQ(std::vector<UUID>{original_id}, enabled_settings->getInfo()->profiles_with_implicit);
+
+    access_control.update(
+        original_id,
+        [](const AccessEntityPtr & entity, const UUID &)
+        {
+            auto renamed_profile = std::static_pointer_cast<SettingsProfile>(entity->clone());
+            renamed_profile->setName("renamed");
+            return renamed_profile;
+        });
+    EXPECT_TRUE(enabled_settings->getInfo()->profiles_with_implicit.empty());
+
+    auto replacement_profile = std::make_shared<SettingsProfile>();
+    replacement_profile->setName("configured");
+    const auto replacement_id = access_control.insert(replacement_profile);
+    EXPECT_EQ(std::vector<UUID>{replacement_id}, enabled_settings->getInfo()->profiles_with_implicit);
+}
+
 TEST(SettingsProfilesCache, EnabledSettingsOutlivesAccessControl)
 {
     std::shared_ptr<const EnabledSettings> enabled_settings;

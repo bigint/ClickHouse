@@ -35,6 +35,7 @@ private:
     void ensureAllProfilesRead();
     void profileAddedOrChanged(const UUID & profile_id, const SettingsProfilePtr & new_profile) TSA_REQUIRES(mutex);
     void profileRemoved(const UUID & profile_id) TSA_REQUIRES(mutex);
+    void refreshDefaultProfileID() TSA_REQUIRES(mutex);
     void mergeSettingsAndConstraintsIfNeeded() TSA_REQUIRES(mutex);
     void mergeSettingsAndConstraints() TSA_REQUIRES(mutex);
     void mergeSettingsAndConstraintsFor(EnabledSettings & enabled) const TSA_REQUIRES(mutex);
@@ -52,6 +53,7 @@ private:
     bool need_merge_settings_and_constraints TSA_GUARDED_BY(mutex) = false;
     scope_guard subscription;
     std::map<EnabledSettings::Params, std::weak_ptr<EnabledSettings>> enabled_settings;
+    String default_profile_name;
     std::optional<UUID> default_profile_id;
     Poco::LRUCache<UUID, std::shared_ptr<const SettingsProfilesInfo>> profile_infos_cache;
     mutable std::mutex mutex;

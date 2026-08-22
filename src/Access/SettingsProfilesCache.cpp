@@ -87,6 +87,7 @@ void SettingsProfilesCache::profileAddedOrChanged(const UUID & profile_id, const
             profiles_by_name.erase(old_profile->getName());
         profiles_by_name[new_profile->getName()] = profile_id;
     }
+    refreshDefaultProfileID();
     profile_infos_cache.clear();
     need_merge_settings_and_constraints = true;
 }
@@ -100,8 +101,26 @@ void SettingsProfilesCache::profileRemoved(const UUID & profile_id)
         return;
     profiles_by_name.erase(it->second->getName());
     all_profiles.erase(it);
+    refreshDefaultProfileID();
     profile_infos_cache.clear();
     need_merge_settings_and_constraints = true;
+}
+
+
+void SettingsProfilesCache::refreshDefaultProfileID()
+{
+    /// `mutex` is already locked.
+    if (default_profile_name.empty())
+    {
+        default_profile_id.reset();
+        return;
+    }
+
+    const auto it = profiles_by_name.find(default_profile_name);
+    if (it == profiles_by_name.end())
+        default_profile_id.reset();
+    else
+        default_profile_id = it->second;
 }
 
 
@@ -123,9 +142,10 @@ void SettingsProfilesCache::setDefaultProfileName(const String & default_profile
         new_default_profile_id = it->second;
     }
 
-    if (default_profile_id == new_default_profile_id)
+    if ((this->default_profile_name == default_profile_name) && (default_profile_id == new_default_profile_id))
         return;
 
+    this->default_profile_name = default_profile_name;
     default_profile_id = new_default_profile_id;
     need_merge_settings_and_constraints = true;
     mergeSettingsAndConstraintsIfNeeded();
