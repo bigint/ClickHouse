@@ -119,6 +119,31 @@ TEST(MultipleAccessStorage, CollisionCheckUsesEntityReturnedToNestedStorage)
     EXPECT_EQ(lower_priority_storage->read<User>(lower_priority_id)->getName(), "available_name");
 }
 
+TEST(MultipleAccessStorage, RenameRejectsCollisionInLaterStorage)
+{
+    AccessChangesNotifier notifier;
+    auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", notifier, true);
+    auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", notifier, true);
+
+    const auto higher_priority_id = higher_priority_storage->insert(makeUser("original_name"));
+    lower_priority_storage->insert(makeUser("reserved_name"));
+
+    MultipleAccessStorage storage;
+    storage.setStorages({higher_priority_storage, lower_priority_storage});
+
+    EXPECT_THROW(
+        storage.update(
+            higher_priority_id,
+            [](const AccessEntityPtr & entity, const UUID &)
+            {
+                auto updated_user = std::static_pointer_cast<User>(entity->clone());
+                updated_user->setName("reserved_name");
+                return updated_user;
+            }),
+        Exception);
+    EXPECT_EQ(higher_priority_storage->read<User>(higher_priority_id)->getName(), "original_name");
+}
+
 TEST(MultipleAccessStorage, InsertFindsNameCollisionInLaterStorage)
 {
     AccessChangesNotifier notifier;
