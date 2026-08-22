@@ -186,3 +186,30 @@ TEST(QuotaCache, KeyTypeChangeDropsOldUsageBuckets)
     ASSERT_EQ(1u, usages.front().intervals.size());
     EXPECT_EQ(0u, usages.front().intervals.front().used[static_cast<size_t>(QuotaType::QUERIES)]);
 }
+
+TEST(QuotaCache, ForwardedPrefixRejectsMalformedAddress)
+{
+    AccessControl access_control;
+    auto storage = std::make_shared<MemoryAccessStorage>("memory", access_control.getChangesNotifier(), true);
+    access_control.setStorages({storage});
+
+    auto quota = std::make_shared<Quota>();
+    quota->setName("forwarded_ip_quota");
+    quota->key_type = QuotaKeyType::FORWARDED_IP_ADDRESS;
+    quota->ipv4_prefix_bits = 24;
+    quota->to_roles = RolesOrUsersSet::AllTag{};
+    auto & limits = quota->all_limits.emplace_back();
+    limits.duration = std::chrono::minutes(1);
+    limits.max[static_cast<size_t>(QuotaType::QUERIES)] = 1;
+    access_control.insert(quota);
+
+    EXPECT_THROW(
+        access_control.getEnabledQuota(
+            UUIDHelpers::generateV4(),
+            "user",
+            {},
+            std::make_shared<Poco::Net::IPAddress>("127.0.0.1"),
+            "not-an-ip",
+            ""),
+        Exception);
+}

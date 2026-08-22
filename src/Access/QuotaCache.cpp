@@ -14,6 +14,7 @@
 #include <boost/range/algorithm/lower_bound.hpp>
 #include <boost/range/algorithm/stable_sort.hpp>
 #include <boost/smart_ptr/make_shared.hpp>
+#include <Poco/Exception.h>
 
 
 namespace ProfileEvents
@@ -26,6 +27,7 @@ namespace DB
 {
 namespace ErrorCodes
 {
+    extern const int BAD_ARGUMENTS;
     extern const int QUOTA_REQUIRES_CLIENT_KEY;
     extern const int LOGICAL_ERROR;
 }
@@ -146,9 +148,13 @@ String QuotaCache::QuotaInfo::calculateKey(const EnabledQuota & enabled, bool th
                     Poco::Net::IPAddress forwarded_ip(params.forwarded_address);
                     return mask_address(forwarded_ip);
                 }
-                catch (...) /// Ok: a malformed X-Forwarded-For value should not fail the query; fall back to using the raw string as the quota key, matching pre-prefix-bits behavior.
+                catch (const Poco::Exception &)
                 {
-                    return params.forwarded_address;
+                    throw Exception(
+                        ErrorCodes::BAD_ARGUMENTS,
+                        "Cannot apply quota {}: forwarded address '{}' is not a valid IP address",
+                        quota->getName(),
+                        params.forwarded_address);
                 }
             }
             return params.forwarded_address;
