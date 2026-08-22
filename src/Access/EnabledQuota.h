@@ -174,7 +174,6 @@ private:
 
     const Params params;
     boost::atomic_shared_ptr<const Quotas> quotas; /// atomically changed by QuotaCache when quotas change
-    std::atomic<bool> empty = false; /// Use a separate flag to avoid loading `quotas`, which is way more expensive than an atomic bool
 };
 
 }

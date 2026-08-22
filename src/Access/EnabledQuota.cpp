@@ -323,8 +323,6 @@ void EnabledQuota::used(QuotaType quota_type, QuotaValue value, bool check_excee
 
 void EnabledQuota::used(const std::pair<QuotaType, QuotaValue> & usage1, bool check_exceeded) const
 {
-    if (empty)
-        return;
     auto loaded = quotas.load();
     auto current_time = std::chrono::system_clock::now();
     for (const auto & quota : *loaded)
@@ -337,8 +335,6 @@ void EnabledQuota::used(const std::pair<QuotaType, QuotaValue> & usage1, bool ch
 
 void EnabledQuota::used(const std::pair<QuotaType, QuotaValue> & usage1, const std::pair<QuotaType, QuotaValue> & usage2, bool check_exceeded) const
 {
-    if (empty)
-        return;
     auto loaded = quotas.load();
     auto current_time = std::chrono::system_clock::now();
     for (const auto & quota : *loaded)
@@ -357,8 +353,6 @@ void EnabledQuota::used(const std::pair<QuotaType, QuotaValue> & usage1, const s
 
 void EnabledQuota::used(const std::pair<QuotaType, QuotaValue> & usage1, const std::pair<QuotaType, QuotaValue> & usage2, const std::pair<QuotaType, QuotaValue> & usage3, bool check_exceeded) const
 {
-    if (empty)
-        return;
     auto loaded = quotas.load();
     auto current_time = std::chrono::system_clock::now();
     for (const auto & quota : *loaded)
@@ -379,8 +373,6 @@ void EnabledQuota::used(const std::pair<QuotaType, QuotaValue> & usage1, const s
 
 void EnabledQuota::used(const std::vector<std::pair<QuotaType, QuotaValue>> & usages, bool check_exceeded) const
 {
-    if (empty)
-        return;
     auto loaded = quotas.load();
     auto current_time = std::chrono::system_clock::now();
     for (const auto & quota : *loaded)
@@ -395,8 +387,6 @@ void EnabledQuota::used(const std::vector<std::pair<QuotaType, QuotaValue>> & us
 
 void EnabledQuota::usedPerNormalizedHash(UInt64 normalized_query_hash) const
 {
-    if (empty)
-        return;
     auto loaded = quotas.load();
     auto current_time = std::chrono::system_clock::now();
     std::vector<boost::shared_ptr<const Intervals>> targets;
@@ -449,8 +439,6 @@ boost::shared_ptr<const EnabledQuota::Intervals> EnabledQuota::resolveTargetInte
 
 void EnabledQuota::usedForQuery(UInt64 normalized_query_hash, QuotaType quota_type, QuotaValue value, bool check_exceeded) const
 {
-    if (empty)
-        return;
     auto loaded = quotas.load();
     auto current_time = std::chrono::system_clock::now();
     std::vector<boost::shared_ptr<const Intervals>> targets;
@@ -472,8 +460,6 @@ void EnabledQuota::usedForQuery(UInt64 normalized_query_hash, QuotaType quota_ty
 
 void EnabledQuota::usedForQuery(UInt64 normalized_query_hash, std::initializer_list<std::pair<QuotaType, QuotaValue>> usages, bool check_exceeded) const
 {
-    if (empty)
-        return;
     auto loaded = quotas.load();
     auto current_time = std::chrono::system_clock::now();
     std::vector<boost::shared_ptr<const Intervals>> targets;
@@ -496,8 +482,6 @@ void EnabledQuota::usedForQuery(UInt64 normalized_query_hash, std::initializer_l
 
 void EnabledQuota::checkExceeded() const
 {
-    if (empty)
-        return;
     auto loaded = quotas.load();
     auto current_time = std::chrono::system_clock::now();
     for (const auto & quota : *loaded)
@@ -507,8 +491,6 @@ void EnabledQuota::checkExceeded() const
 
 void EnabledQuota::checkExceeded(QuotaType quota_type) const
 {
-    if (empty)
-        return;
     auto loaded = quotas.load();
     auto current_time = std::chrono::system_clock::now();
     for (const auto & quota : *loaded)
@@ -518,8 +500,6 @@ void EnabledQuota::checkExceeded(QuotaType quota_type) const
 
 void EnabledQuota::checkExceededForQuery(UInt64 normalized_query_hash, QuotaType quota_type) const
 {
-    if (empty)
-        return;
     auto loaded = quotas.load();
     auto current_time = std::chrono::system_clock::now();
     for (const auto & quota : *loaded)

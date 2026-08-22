@@ -473,11 +473,10 @@ void QuotaCache::chooseQuotaToConsumeFor(EnabledQuota & enabled)
         new_quotas->push_back(std::move(single));
     }
 
-    /// Publish the new set: store `quotas` (always non-null, possibly empty) before updating the
-    /// `empty` flag, so a concurrent reader never observes `empty == false` with a stale set.
-    bool is_empty = new_quotas->empty();
+    /// Publish the complete quota state in one atomic operation. Readers must not use a separate
+    /// empty flag because it cannot be updated atomically with this pointer: when an empty set
+    /// becomes non-empty, such a flag can briefly make a concurrent query skip the new quota.
     enabled.quotas.store(new_quotas);
-    enabled.empty = is_empty;
 }
 
 

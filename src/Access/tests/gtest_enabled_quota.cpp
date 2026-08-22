@@ -37,7 +37,6 @@ struct EnabledQuotaTestAccess
         auto quotas = boost::make_shared<EnabledQuota::Quotas>();
         quotas->push_back(std::move(quota));
         enabled_quota->quotas.store(quotas);
-        enabled_quota->empty = false;
         return {std::move(enabled_quota), std::move(intervals)};
     }
 
