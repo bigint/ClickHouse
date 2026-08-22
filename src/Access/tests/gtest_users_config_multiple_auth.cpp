@@ -10,6 +10,7 @@
 #include <Poco/Util/XMLConfiguration.h>
 #include <Common/Exception.h>
 
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 
@@ -83,6 +84,8 @@ TEST_F(UsersConfigMultipleAuthTest, UndefinedRoleGrantIsNotRetained)
 
 TEST_F(UsersConfigMultipleAuthTest, DottedEntityNamesUseUnescapedIDs)
 {
+    access_control->setCustomSettingsPrefixes("custom_");
+
     const auto config = createConfigFromXML(R"(
         <clickhouse>
             <roles>
@@ -91,6 +94,12 @@ TEST_F(UsersConfigMultipleAuthTest, DottedEntityNamesUseUnescapedIDs)
             <profiles>
                 <profile.with.dot>
                     <max_threads>1</max_threads>
+                    <custom_setting.with.dot>value</custom_setting.with.dot>
+                    <constraints>
+                        <custom_constraint.with.dot>
+                            <readonly/>
+                        </custom_constraint.with.dot>
+                    </constraints>
                 </profile.with.dot>
             </profiles>
             <quotas>
@@ -140,6 +149,15 @@ TEST_F(UsersConfigMultipleAuthTest, DottedEntityNamesUseUnescapedIDs)
     EXPECT_TRUE(user->granted_roles.isGranted(*role_id));
     EXPECT_EQ(user->settings.toProfileIDs(), UUIDs{*profile_id});
     EXPECT_TRUE(quota->to_roles.match(*user_id));
+
+    const auto has_profile_element = [&](std::string_view setting_name)
+    {
+        return std::ranges::any_of(
+            profile->elements,
+            [&](const SettingsProfileElement & element) { return element.setting_name == setting_name; });
+    };
+    EXPECT_TRUE(has_profile_element("custom_setting.with.dot"));
+    EXPECT_TRUE(has_profile_element("custom_constraint.with.dot"));
 
     const auto policy_ids = storage->findAll<RowPolicy>();
     ASSERT_EQ(policy_ids.size(), 1u);

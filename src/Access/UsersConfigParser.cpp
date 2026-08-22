@@ -742,14 +742,15 @@ namespace
         Poco::Util::AbstractConfiguration::Keys keys;
         config.keys(path_to_constraints, keys);
 
-        for (const String & setting_name : keys)
+        for (const String & config_setting_name : keys)
         {
+            const String setting_name = unescapeConfigKeyName(config_setting_name);
             access_control.checkSettingNameIsAllowed(setting_name);
 
             SettingsProfileElement profile_element;
             profile_element.setting_name = setting_name;
             Poco::Util::AbstractConfiguration::Keys constraint_types;
-            String path_to_name = path_to_constraints + "." + setting_name;
+            String path_to_name = path_to_constraints + "." + config_setting_name;
             config.keys(path_to_name, constraint_types);
 
             size_t writability_count = 0;
@@ -833,7 +834,7 @@ namespace
                 continue;
             }
 
-            const auto & setting_name = key;
+            const String setting_name = unescapeConfigKeyName(key);
             access_control.checkSettingNameIsAllowed(setting_name);
 
             SettingsProfileElement profile_element;
