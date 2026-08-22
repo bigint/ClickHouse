@@ -33,9 +33,6 @@ public:
 
 private:
     void ensureAllProfilesRead();
-    void profileAddedOrChanged(const UUID & profile_id, const SettingsProfilePtr & new_profile) TSA_REQUIRES(mutex);
-    void profileRemoved(const UUID & profile_id) TSA_REQUIRES(mutex);
-    void refreshDefaultProfileID() TSA_REQUIRES(mutex);
     void mergeSettingsAndConstraintsIfNeeded() TSA_REQUIRES(mutex);
     void mergeSettingsAndConstraints() TSA_REQUIRES(mutex);
     std::shared_ptr<const SettingsProfilesInfo> calculateSettingsAndConstraintsFor(const EnabledSettings & enabled) const TSA_REQUIRES(mutex);
