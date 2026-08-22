@@ -254,7 +254,7 @@ StoragePtr MultipleAccessStorage::findExcludingStorage(AccessEntityType type, co
 
 void MultipleAccessStorage::moveAccessEntities(const std::vector<UUID> & ids, const String & source_storage_name, const String & destination_storage_name)
 {
-    std::lock_guard move_lock{move_mutex};
+    std::lock_guard mutation_lock{mutation_mutex};
 
     auto source_storage = getStorageByName(source_storage_name);
     auto destination_storage = getStorageByName(destination_storage_name);
@@ -427,6 +427,7 @@ void MultipleAccessStorage::reload(ReloadMode reload_mode)
 
 bool MultipleAccessStorage::insertImpl(const UUID & id, const AccessEntityPtr & entity, bool replace_if_exists, bool throw_if_exists, UUID * conflicting_id)
 {
+    std::lock_guard mutation_lock{mutation_mutex};
     auto storages = getStoragesInternal();
     StoragePtr storage_by_id;
     StoragePtr storage_by_name;
@@ -497,6 +498,7 @@ bool MultipleAccessStorage::removeImpl(const UUID & id, bool throw_if_not_exists
 
 bool MultipleAccessStorage::updateImpl(const UUID & id, const UpdateFunc & update_func, bool throw_if_not_exists)
 {
+    std::lock_guard mutation_lock{mutation_mutex};
     auto storage_for_updating = findStorage(id);
     if (!storage_for_updating)
     {

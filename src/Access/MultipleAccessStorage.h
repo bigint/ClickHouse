@@ -84,7 +84,7 @@ private:
     mutable CacheBase<UUID, Storage> ids_cache TSA_GUARDED_BY(mutex);
     mutable std::mutex mutex;
 
-    mutable std::mutex move_mutex;
+    mutable std::recursive_mutex mutation_mutex;
 };
 
 }

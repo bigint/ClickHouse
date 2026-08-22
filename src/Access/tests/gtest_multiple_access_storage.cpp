@@ -9,6 +9,8 @@
 #include <Core/UUID.h>
 #include <Common/Exception.h>
 
+#include <chrono>
+#include <future>
 #include <stdexcept>
 
 
@@ -142,6 +144,62 @@ TEST(MultipleAccessStorage, RenameRejectsCollisionInLaterStorage)
             }),
         Exception);
     EXPECT_EQ(higher_priority_storage->read<User>(higher_priority_id)->getName(), "original_name");
+}
+
+TEST(MultipleAccessStorage, MutationsAreSerializedAcrossNestedStorages)
+{
+    AccessChangesNotifier notifier;
+    auto first_storage = std::make_shared<MemoryAccessStorage>("first", notifier, true);
+    auto second_storage = std::make_shared<MemoryAccessStorage>("second", notifier, true);
+    const auto first_id = first_storage->insert(makeUser("first_user"));
+    const auto second_id = second_storage->insert(makeUser("second_user"));
+
+    MultipleAccessStorage storage;
+    storage.setStorages({first_storage, second_storage});
+
+    std::promise<void> first_callback_entered_promise;
+    auto first_callback_entered = first_callback_entered_promise.get_future();
+    std::promise<void> release_first_callback_promise;
+    auto release_first_callback = release_first_callback_promise.get_future();
+    auto first_update = std::async(
+        std::launch::async,
+        [&]
+        {
+            storage.update(
+                first_id,
+                [&](const AccessEntityPtr & entity, const UUID &)
+                {
+                    first_callback_entered_promise.set_value();
+                    release_first_callback.wait();
+                    return entity;
+                });
+        });
+    first_callback_entered.wait();
+
+    std::promise<void> second_update_started_promise;
+    auto second_update_started = second_update_started_promise.get_future();
+    std::promise<void> second_callback_entered_promise;
+    auto second_callback_entered = second_callback_entered_promise.get_future();
+    auto second_update = std::async(
+        std::launch::async,
+        [&]
+        {
+            second_update_started_promise.set_value();
+            storage.update(
+                second_id,
+                [&](const AccessEntityPtr & entity, const UUID &)
+                {
+                    second_callback_entered_promise.set_value();
+                    return entity;
+                });
+        });
+    second_update_started.wait();
+
+    EXPECT_EQ(second_callback_entered.wait_for(std::chrono::milliseconds(50)), std::future_status::timeout);
+    release_first_callback_promise.set_value();
+    first_update.get();
+    second_update.get();
+    EXPECT_EQ(second_callback_entered.wait_for(std::chrono::milliseconds(0)), std::future_status::ready);
 }
 
 TEST(MultipleAccessStorage, InsertFindsNameCollisionInLaterStorage)
