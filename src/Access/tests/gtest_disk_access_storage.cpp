@@ -88,6 +88,35 @@ TEST(DiskAccessStorageRecovery, RebuildRemovesOlderDuplicates)
     EXPECT_EQ(*resolved, id_b);
 }
 
+TEST(DiskAccessStorageRecovery, RebuildsListWithTrailingGarbage)
+{
+    Poco::TemporaryFile temp_dir;
+    temp_dir.createDirectories();
+    String dir = temp_dir.path() + "/";
+
+    const auto id = UUIDHelpers::generateV4();
+    {
+        AccessChangesNotifier notifier;
+        DiskAccessStorage storage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false);
+        auto user = std::make_shared<User>();
+        user->setName("alice");
+        storage.insert(id, user, false, true);
+    }
+
+    const auto users_list_path = std::filesystem::path(dir) / "users.list";
+    const auto valid_size = std::filesystem::file_size(users_list_path);
+    {
+        std::ofstream out(users_list_path, std::ios::app | std::ios::binary);
+        out << "garbage";
+    }
+    ASSERT_GT(std::filesystem::file_size(users_list_path), valid_size);
+
+    AccessChangesNotifier notifier;
+    DiskAccessStorage storage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false);
+    EXPECT_EQ(storage.getID<User>("alice"), id);
+    EXPECT_EQ(std::filesystem::file_size(users_list_path), valid_size);
+}
+
 TEST(DiskAccessStorage, LazyMaterializationDoesNotNotify)
 {
     Poco::TemporaryFile temp_dir;

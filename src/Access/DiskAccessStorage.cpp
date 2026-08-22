@@ -120,6 +120,8 @@ namespace
             id_name_pairs.emplace_back(id, std::move(name));
         }
 
+        assertEOF(in);
+
         return id_name_pairs;
     }
 
