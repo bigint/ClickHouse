@@ -297,6 +297,7 @@ void ExternalAuthenticators::resetImpl()
     ldap_client_params_blueprint.clear();
     ldap_caches.clear();
     kerberos_params.reset();
+    http_auth_servers.clear();
 }
 
 void ExternalAuthenticators::reset()

@@ -48,6 +48,8 @@ public:
     GSSAcceptorContext::Params getKerberosParams() const;
 
 private:
+    friend struct ExternalAuthenticatorsTestAccess;
+
     HTTPAuthClientParams getHTTPAuthenticationParams(const String& server) const;
 
     struct LDAPCacheEntry
