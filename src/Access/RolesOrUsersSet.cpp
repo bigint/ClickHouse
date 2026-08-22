@@ -70,7 +70,8 @@ void RolesOrUsersSet::init(const ASTRolesOrUsersSet & ast, const AccessControl *
     {
         if (ast.id_mode)
             return parse<UUID>(name);
-        chassert(access_control);
+        if (!access_control)
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "Cannot resolve a named role or user without AccessControl");
         if (ast.allow_users && ast.allow_roles)
         {
             auto id = access_control->find<User>(name);
@@ -82,8 +83,8 @@ void RolesOrUsersSet::init(const ASTRolesOrUsersSet & ast, const AccessControl *
         {
             return access_control->getID<User>(name);
         }
-
-        chassert(ast.allow_roles);
+        if (!ast.allow_roles)
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "RolesOrUsersSet allows neither roles nor users");
         return access_control->getID<Role>(name);
     };
 

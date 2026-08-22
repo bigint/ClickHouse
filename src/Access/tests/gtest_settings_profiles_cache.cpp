@@ -7,6 +7,7 @@
 #include <Access/SettingsConstraintsAndProfileIDs.h>
 #include <Access/SettingsProfile.h>
 #include <Access/SettingsProfilesInfo.h>
+#include <Common/Exception.h>
 #include <Core/Settings.h>
 #include <Core/UUID.h>
 #include <Parsers/Access/ASTSettingsProfileElement.h>
@@ -71,6 +72,14 @@ TEST(SettingsProfileElement, NormalizeMergesSettingAliases)
     EXPECT_EQ(elements.front().setting_name, "allow_experimental_analyzer");
     EXPECT_EQ(elements.front().min_value, Field{false});
     EXPECT_EQ(elements.front().max_value, Field{true});
+}
+
+TEST(SettingsProfileElement, NamedParentRequiresAccessControl)
+{
+    ASTSettingsProfileElement ast;
+    ast.parent_profile = "parent";
+
+    EXPECT_THROW(SettingsProfileElement{ast}, Exception);
 }
 
 TEST(SettingsProfilesCache, DefaultProfileChangeRefreshesExistingEnabledSettings)

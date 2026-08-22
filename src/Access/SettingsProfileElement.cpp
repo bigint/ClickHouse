@@ -19,6 +19,7 @@ namespace DB
 
 namespace ErrorCodes
 {
+    extern const int LOGICAL_ERROR;
     extern const int NOT_IMPLEMENTED;
 }
 
@@ -52,7 +53,8 @@ void SettingsProfileElement::init(const ASTSettingsProfileElement & ast, const A
     {
         if (id_mode)
             return parse<UUID>(name_);
-        chassert(access_control);
+        if (!access_control)
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "Cannot resolve a named settings profile without AccessControl");
         return access_control->getID<SettingsProfile>(name_);  /// NOLINT(clang-analyzer-core.CallAndMessage)
     };
 

@@ -32,3 +32,12 @@ TEST(RolesOrUsersSet, CurrentUserRequiresID)
     ast.except_current_user = true;
     EXPECT_THROW(RolesOrUsersSet{ast}, Exception);
 }
+
+TEST(RolesOrUsersSet, NamedEntitiesRequireAccessControl)
+{
+    ASTRolesOrUsersSet ast;
+    ast.names = {"role"};
+    ast.allow_roles = true;
+
+    EXPECT_THROW(RolesOrUsersSet{ast}, Exception);
+}
