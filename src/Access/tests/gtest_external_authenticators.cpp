@@ -58,6 +58,33 @@ TEST(ExternalAuthenticators, ResetRemovesHTTPServers)
     EXPECT_THROW(ExternalAuthenticatorsTestAccess::getHTTPAuthenticationParams(authenticators, "primary"), Exception);
 }
 
+TEST(ExternalAuthenticators, FailedReloadPreservesPreviousConfiguration)
+{
+    ExternalAuthenticators authenticators;
+    const auto valid_config = createConfig(R"(
+        <clickhouse>
+            <http_authentication_servers>
+                <primary>
+                    <uri>http://127.0.0.1:1/authenticate</uri>
+                </primary>
+            </http_authentication_servers>
+        </clickhouse>
+    )");
+    authenticators.setConfiguration(*valid_config, getLogger("ExternalAuthenticatorsReloadTest"));
+
+    const auto invalid_config = createConfig(R"(
+        <clickhouse>
+            <http_authentication_servers/>
+            <http_authentication_servers/>
+        </clickhouse>
+    )");
+    EXPECT_THROW(authenticators.setConfiguration(*invalid_config, getLogger("ExternalAuthenticatorsReloadTest")), Exception);
+
+    EXPECT_EQ(
+        ExternalAuthenticatorsTestAccess::getHTTPAuthenticationParams(authenticators, "primary").uri.toString(),
+        "http://127.0.0.1:1/authenticate");
+}
+
 TEST(ExternalAuthenticators, RejectsInitialBackoffAboveMaximum)
 {
     ExternalAuthenticators authenticators;

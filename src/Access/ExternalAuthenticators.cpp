@@ -321,9 +321,6 @@ void ExternalAuthenticators::reset()
 
 void ExternalAuthenticators::setConfiguration(const Poco::Util::AbstractConfiguration & config, LoggerPtr log)
 {
-    std::lock_guard lock(mutex);
-    resetImpl();
-
     Poco::Util::AbstractConfiguration::Keys all_keys;
     config.keys("", all_keys);
 
@@ -355,15 +352,15 @@ void ExternalAuthenticators::setConfiguration(const Poco::Util::AbstractConfigur
     if (http_auth_server_keys_count > 1)
         throw Exception(ErrorCodes::BAD_ARGUMENTS, "Multiple http_authentication_servers sections are not allowed");
 
+    std::unordered_map<String, HTTPAuthClientParams> new_http_auth_servers;
     Poco::Util::AbstractConfiguration::Keys http_auth_server_names;
     config.keys(http_auth_servers_config, http_auth_server_names);
-    http_auth_servers.clear();
     for (const auto & http_auth_server_name : http_auth_server_names)
     {
         String prefix = fmt::format("{}.{}", http_auth_servers_config, http_auth_server_name);
         try
         {
-            http_auth_servers[http_auth_server_name] = parseHTTPAuthParams(config, prefix);
+            new_http_auth_servers[http_auth_server_name] = parseHTTPAuthParams(config, prefix);
         }
         catch (...)
         {
@@ -371,9 +368,9 @@ void ExternalAuthenticators::setConfiguration(const Poco::Util::AbstractConfigur
         }
     }
 
+    LDAPParams new_ldap_client_params_blueprint;
     Poco::Util::AbstractConfiguration::Keys ldap_server_names;
     config.keys("ldap_servers", ldap_server_names);
-    ldap_client_params_blueprint.clear();
     for (auto ldap_server_name : ldap_server_names)
     {
         try
@@ -382,12 +379,12 @@ void ExternalAuthenticators::setConfiguration(const Poco::Util::AbstractConfigur
             if (bracket_pos != std::string::npos)
                 ldap_server_name.resize(bracket_pos);
 
-            if (ldap_client_params_blueprint.contains(ldap_server_name))
+            if (new_ldap_client_params_blueprint.contains(ldap_server_name))
                 throw Exception(ErrorCodes::BAD_ARGUMENTS, "Multiple LDAP servers with the same name are not allowed");
 
             LDAPClient::Params ldap_client_params_tmp;
             parseLDAPServer(ldap_client_params_tmp, config, ldap_server_name);
-            ldap_client_params_blueprint.emplace(std::move(ldap_server_name), std::move(ldap_client_params_tmp));
+            new_ldap_client_params_blueprint.emplace(std::move(ldap_server_name), std::move(ldap_client_params_tmp));
         }
         catch (...)
         {
@@ -395,20 +392,26 @@ void ExternalAuthenticators::setConfiguration(const Poco::Util::AbstractConfigur
         }
     }
 
-    kerberos_params.reset();
+    std::optional<GSSAcceptorContext::Params> new_kerberos_params;
     try
     {
         if (kerberos_keys_count > 0)
         {
             GSSAcceptorContext::Params kerberos_params_tmp;
             parseKerberosParams(kerberos_params_tmp, config);
-            kerberos_params = std::move(kerberos_params_tmp);
+            new_kerberos_params = std::move(kerberos_params_tmp);
         }
     }
     catch (...)
     {
         tryLogCurrentException(log, "Could not parse Kerberos section");
     }
+
+    std::lock_guard lock(mutex);
+    ldap_client_params_blueprint = std::move(new_ldap_client_params_blueprint);
+    ldap_caches.clear();
+    kerberos_params = std::move(new_kerberos_params);
+    http_auth_servers = std::move(new_http_auth_servers);
 }
 
 static UInt128 computeParamsHash(const LDAPClient::Params & params, const LDAPClient::RoleSearchParamsList * role_search_params)
