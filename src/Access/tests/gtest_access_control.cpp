@@ -1,10 +1,13 @@
 #include <Access/AccessControl.h>
+#include <Access/User.h>
 #include <Common/Exception.h>
 
 #include <gtest/gtest.h>
 #include <Poco/AutoPtr.h>
+#include <Poco/TemporaryFile.h>
 #include <Poco/Util/XMLConfiguration.h>
 
+#include <fstream>
 #include <sstream>
 
 
@@ -54,4 +57,30 @@ TEST(AccessControl, InvalidPasswordRulesPreservePreviousPolicy)
 
     EXPECT_THROW(access_control.checkPasswordComplexityRules("short"), Exception);
     EXPECT_NO_THROW(access_control.checkPasswordComplexityRules("long-enough"));
+}
+
+TEST(AccessControl, LegacyDottedUsersXMLDirectoryKeyIsRecognized)
+{
+    Poco::TemporaryFile temp_dir;
+    temp_dir.createDirectories();
+    const String users_path = temp_dir.path() + "/users.xml";
+    std::ofstream{users_path} << R"(
+        <clickhouse>
+            <users>
+                <dotted_directory_user><no_password/></dotted_directory_user>
+            </users>
+        </clickhouse>
+    )";
+
+    const auto config = createConfig(
+        "<clickhouse><user_directories><users.xml><path>" + users_path
+        + "</path></users.xml></user_directories></clickhouse>");
+
+    AccessControl access_control;
+    access_control.setupFromMainConfig(
+        *config,
+        temp_dir.path() + "/config.xml",
+        [] { return zkutil::ZooKeeperPtr{}; });
+
+    EXPECT_TRUE(access_control.find<User>("dotted_directory_user").has_value());
 }
