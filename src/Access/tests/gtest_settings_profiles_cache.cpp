@@ -52,6 +52,27 @@ TEST(SettingsProfileElement, MapDisallowedValueRoundTripsThroughAST)
     EXPECT_EQ(restored_from_named_ast.disallowed_values, original.disallowed_values);
 }
 
+TEST(SettingsProfileElement, NormalizeMergesSettingAliases)
+{
+    SettingsProfileElement alias;
+    alias.setting_name = "enable_analyzer";
+    alias.min_value = Field{false};
+
+    SettingsProfileElement canonical;
+    canonical.setting_name = "allow_experimental_analyzer";
+    canonical.max_value = Field{true};
+
+    SettingsProfileElements elements;
+    elements.push_back(std::move(alias));
+    elements.push_back(std::move(canonical));
+    elements.normalize();
+
+    ASSERT_EQ(elements.size(), 1);
+    EXPECT_EQ(elements.front().setting_name, "allow_experimental_analyzer");
+    EXPECT_EQ(elements.front().min_value, Field{false});
+    EXPECT_EQ(elements.front().max_value, Field{true});
+}
+
 TEST(SettingsProfilesCache, DefaultProfileChangeRefreshesExistingEnabledSettings)
 {
     AccessControl access_control;

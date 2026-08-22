@@ -2,6 +2,7 @@
 #include <Access/SettingsConstraints.h>
 #include <Access/AccessControl.h>
 #include <Access/SettingsProfile.h>
+#include <Access/resolveSetting.h>
 #include <Core/Settings.h>
 #include <Common/SettingConstraintWritability.h>
 #include <Common/SettingsChanges.h>
@@ -323,6 +324,15 @@ UUIDs SettingsProfileElements::toProfileIDs() const
 
 void SettingsProfileElements::normalize()
 {
+    /// Aliases address the same setting and must participate in the same duplicate-merging rules.
+    /// Keeping the original spelling would let an alias and its canonical name survive as two
+    /// elements, even though `SettingsConstraints` resolves both to the same constraint slot.
+    for (auto & element : *this)
+    {
+        if (!element.setting_name.empty())
+            element.setting_name = resolveSettingName(element.setting_name);
+    }
+
     /// Ensure that each element represents either a setting or a profile.
     {
         SettingsProfileElements new_elements;
