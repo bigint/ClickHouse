@@ -15,6 +15,29 @@
 
 using namespace DB;
 
+TEST(SettingsProfileElements, CopyDependenciesReplacesSelectedParents)
+{
+    const UUID first_id = UUIDHelpers::generateV4();
+    const UUID second_id = UUIDHelpers::generateV4();
+    const UUID unrelated_id = UUIDHelpers::generateV4();
+
+    SettingsProfileElements source;
+    source.emplace_back().parent_profile = first_id;
+    source.emplace_back().parent_profile = second_id;
+
+    SettingsProfileElements destination;
+    destination.emplace_back().parent_profile = second_id;
+    destination.emplace_back().parent_profile = first_id;
+    destination.emplace_back().parent_profile = unrelated_id;
+
+    destination.copyDependenciesFrom(source, {first_id, second_id});
+    EXPECT_EQ(destination.toProfileIDs(), UUIDs({first_id, second_id, unrelated_id}));
+
+    SettingsProfileElements absent;
+    destination.copyDependenciesFrom(absent, {first_id, second_id});
+    EXPECT_EQ(destination.toProfileIDs(), UUIDs({unrelated_id}));
+}
+
 TEST(SettingsProfileElement, CastsDisallowedValuesWithoutOverwritingValue)
 {
     AccessControl access_control;

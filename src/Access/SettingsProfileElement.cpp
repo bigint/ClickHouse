@@ -230,6 +230,9 @@ void SettingsProfileElements::replaceDependencies(const std::unordered_map<UUID,
 
 void SettingsProfileElements::copyDependenciesFrom(const SettingsProfileElements & src, const std::unordered_set<UUID> & ids)
 {
+    std::erase_if(
+        *this, [&](const SettingsProfileElement & element) { return element.parent_profile && ids.contains(*element.parent_profile); });
+
     SettingsProfileElements new_elements;
     for (const auto & element : src)
     {
