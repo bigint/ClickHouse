@@ -55,6 +55,24 @@ TEST(Lexer, NullInputWithMaxQuerySize)
     EXPECT_EQ(TokenType::EndOfStream, token.type);
 }
 
+TEST(ParserCreateUserQuery, CloneOwnsGlobalValidUntil)
+{
+    const String query = "CREATE USER user1 VALID UNTIL '2030-01-01 00:00:00'";
+    ParserCreateUserQuery parser;
+    const ASTPtr original = parseQuery(parser, query, "", 0, 0, 0);
+    ASSERT_TRUE(original);
+    const ASTPtr cloned = original->clone();
+
+    const auto & original_query = original->as<const ASTCreateUserQuery &>();
+    const auto & cloned_query = cloned->as<const ASTCreateUserQuery &>();
+    ASSERT_TRUE(original_query.global_valid_until);
+    ASSERT_TRUE(cloned_query.global_valid_until);
+    EXPECT_NE(original_query.global_valid_until.get(), cloned_query.global_valid_until.get());
+    ASSERT_FALSE(cloned->children.empty());
+    EXPECT_EQ(cloned->children.back().get(), cloned_query.global_valid_until.get());
+    EXPECT_EQ(original->getTreeHash(false), cloned->getTreeHash(false));
+}
+
 /// The output-option children (INTO OUTFILE, COMPRESSION, FORMAT, SETTINGS) must end up
 /// in the same canonical order whether the AST is freshly parsed, cloned, or obtained by
 /// a format+reparse roundtrip. Otherwise the tree hash differs across these paths, which

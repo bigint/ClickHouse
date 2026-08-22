@@ -216,6 +216,12 @@ ASTPtr ASTCreateUserQuery::clone() const
         res->children.push_back(ast_clone);
     }
 
+    if (global_valid_until)
+    {
+        res->global_valid_until = global_valid_until->clone();
+        res->children.push_back(res->global_valid_until);
+    }
+
     return res;
 }
 
