@@ -9,6 +9,8 @@
 #include <Core/UUID.h>
 #include <Common/Exception.h>
 
+#include <stdexcept>
+
 
 using namespace DB;
 
@@ -46,6 +48,48 @@ public:
 private:
     AccessChangesNotifier & notifier;
     UUID changed_id;
+};
+
+class ThrowingRemoveMemoryAccessStorage : public IAccessStorage
+{
+public:
+    explicit ThrowingRemoveMemoryAccessStorage(AccessChangesNotifier & notifier)
+        : IAccessStorage("throwing_remove")
+        , memory_storage("throwing_remove_memory", notifier, true)
+    {
+    }
+
+    UUID insertEntity(const AccessEntityPtr & entity) { return memory_storage.insert(entity); }
+    void setThrowID(const UUID & id) { throw_id = id; }
+
+    bool exists(const UUID & id) const override { return memory_storage.exists(id); }
+
+protected:
+    std::optional<UUID> findImpl(AccessEntityType type, const String & name) const override { return memory_storage.find(type, name); }
+    std::vector<UUID> findAllImpl(AccessEntityType type) const override { return memory_storage.findAll(type); }
+    AccessEntityPtr readImpl(const UUID & id, bool throw_if_not_exists) const override
+    {
+        return memory_storage.read(id, throw_if_not_exists);
+    }
+    bool insertImpl(
+        const UUID & id, const AccessEntityPtr & entity, bool replace_if_exists, bool throw_if_exists, UUID * conflicting_id) override
+    {
+        return memory_storage.insert(id, entity, replace_if_exists, throw_if_exists, conflicting_id);
+    }
+    bool removeImpl(const UUID & id, bool throw_if_not_exists) override
+    {
+        if (id == throw_id)
+            throw std::runtime_error("rollback remove failed");
+        return memory_storage.remove(id, throw_if_not_exists);
+    }
+    bool updateImpl(const UUID & id, const UpdateFunc & update_func, bool throw_if_not_exists) override
+    {
+        return memory_storage.update(id, update_func, throw_if_not_exists);
+    }
+
+private:
+    MemoryAccessStorage memory_storage;
+    UUID throw_id = UUIDHelpers::Nil;
 };
 }
 
@@ -176,6 +220,32 @@ TEST(MultipleAccessStorage, MoveRollsBackPartialDestinationInsertion)
     EXPECT_TRUE(source_storage->exists(conflicting_role_id));
     EXPECT_FALSE(destination_storage->exists(first_role_id));
     EXPECT_EQ(destination_storage->getID<Role>("conflicting_role"), destination_role_id);
+}
+
+TEST(MultipleAccessStorage, MoveRestoresSourceAfterDestinationRollbackFailure)
+{
+    AccessChangesNotifier notifier;
+    auto source_storage = std::make_shared<MemoryAccessStorage>("source", notifier, true);
+    auto destination_storage = std::make_shared<ThrowingRemoveMemoryAccessStorage>(notifier);
+
+    auto first_role = std::make_shared<Role>();
+    first_role->setName("first_role");
+    const auto first_role_id = source_storage->insert(first_role);
+
+    auto conflicting_role = std::make_shared<Role>();
+    conflicting_role->setName("conflicting_role");
+    const auto conflicting_role_id = source_storage->insert(conflicting_role);
+    destination_storage->insertEntity(conflicting_role);
+    destination_storage->setThrowID(first_role_id);
+
+    MultipleAccessStorage storage;
+    storage.setStorages({source_storage, destination_storage});
+
+    EXPECT_ANY_THROW(storage.moveAccessEntities(
+        {first_role_id, conflicting_role_id}, source_storage->getStorageName(), destination_storage->getStorageName()));
+
+    EXPECT_TRUE(source_storage->exists(first_role_id));
+    EXPECT_TRUE(source_storage->exists(conflicting_role_id));
 }
 
 TEST(AccessControl, MoveDeliversNestedStorageNotifications)

@@ -9,6 +9,8 @@
 #include <boost/range/algorithm/copy.hpp>
 #include <boost/range/algorithm/find.hpp>
 
+#include <exception>
+
 
 namespace DB
 {
@@ -270,10 +272,30 @@ void MultipleAccessStorage::moveAccessEntities(const std::vector<UUID> & ids, co
 
     auto rollback = [&]
     {
-        if (!inserted_ids.empty())
-            removeWithoutDependencyCleanup(*destination_storage, inserted_ids);
-        if (!removed_ids.empty())
-            source_storage->insert(removed_entities, removed_ids);
+        std::exception_ptr rollback_error;
+        try
+        {
+            if (!inserted_ids.empty())
+                removeWithoutDependencyCleanup(*destination_storage, inserted_ids);
+        }
+        catch (...)
+        {
+            rollback_error = std::current_exception();
+        }
+
+        try
+        {
+            if (!removed_ids.empty())
+                source_storage->insert(removed_entities, removed_ids);
+        }
+        catch (...)
+        {
+            if (!rollback_error)
+                rollback_error = std::current_exception();
+        }
+
+        if (rollback_error)
+            std::rethrow_exception(rollback_error);
     };
 
     try
