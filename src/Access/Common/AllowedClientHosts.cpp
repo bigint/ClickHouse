@@ -9,6 +9,7 @@
 #include <Poco/RegularExpression.h>
 #include <Common/DNSResolver.h>
 #include <ifaddrs.h>
+#include <charconv>
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -223,6 +224,15 @@ void AllowedClientHosts::IPSubnet::set(const IPAddress & prefix_, const IPAddres
 
 void AllowedClientHosts::IPSubnet::set(const IPAddress & prefix_, size_t num_prefix_bits)
 {
+    const size_t max_prefix_bits = prefix_.length() * 8;
+    if (num_prefix_bits > max_prefix_bits)
+    {
+        throw Exception(
+            ErrorCodes::BAD_ARGUMENTS,
+            "IP prefix length {} is out of range for an IPv{} address",
+            num_prefix_bits,
+            prefix_.family() == IPAddress::IPv4 ? 4 : 6);
+    }
     set(prefix_, IPAddress(static_cast<unsigned>(num_prefix_bits), prefix_.family()));
 }
 
@@ -244,7 +254,13 @@ AllowedClientHosts::IPSubnet::IPSubnet(const String & str)
     String mask_str(str, slash + 1, str.length() - slash - 1);
     bool only_digits = (mask_str.find_first_not_of("0123456789") == std::string::npos);
     if (only_digits)
-        set(new_prefix, std::stoul(mask_str));
+    {
+        size_t prefix_bits = 0;
+        const auto [end, error] = std::from_chars(mask_str.data(), mask_str.data() + mask_str.size(), prefix_bits);
+        if (error != std::errc{} || end != mask_str.data() + mask_str.size())
+            throw Exception(ErrorCodes::BAD_ARGUMENTS, "Invalid IP prefix length '{}'", mask_str);
+        set(new_prefix, prefix_bits);
+    }
     else
         set(new_prefix, IPAddress{mask_str});
 }

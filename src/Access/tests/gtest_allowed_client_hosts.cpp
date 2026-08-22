@@ -58,3 +58,11 @@ TEST(AllowedClientHosts, RejectsInvalidNameRegexpEagerly)
     EXPECT_THROW(hosts.addNameRegexp("["), Exception);
     EXPECT_TRUE(hosts.empty());
 }
+
+TEST(AllowedClientHosts, RejectsPrefixLengthsBeforeNarrowing)
+{
+    EXPECT_THROW(AllowedClientHosts::IPSubnet{"192.0.2.1/4294967296"}, Exception);
+    EXPECT_THROW(AllowedClientHosts::IPSubnet{"192.0.2.1/33"}, Exception);
+    EXPECT_THROW(AllowedClientHosts::IPSubnet{"2001:db8::1/129"}, Exception);
+    EXPECT_THROW(AllowedClientHosts::IPSubnet{"192.0.2.1/"}, Exception);
+}
