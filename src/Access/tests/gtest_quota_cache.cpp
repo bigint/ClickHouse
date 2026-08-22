@@ -101,3 +101,41 @@ TEST(QuotaCache, RejectedQueryIsAccountedToEveryMatchingQuota)
         EXPECT_EQ(2u, usage.intervals.front().used[static_cast<size_t>(QuotaType::ERRORS)]);
     }
 }
+
+TEST(QuotaCache, KeyTypeChangeDropsOldUsageBuckets)
+{
+    AccessControl access_control;
+    auto storage = std::make_shared<MemoryAccessStorage>("memory", access_control.getChangesNotifier(), true);
+    access_control.setStorages({storage});
+
+    auto quota = std::make_shared<Quota>();
+    quota->setName("quota");
+    quota->key_type = QuotaKeyType::USER_NAME;
+    quota->to_roles = RolesOrUsersSet::AllTag{};
+    auto & limits = quota->all_limits.emplace_back();
+    limits.duration = std::chrono::minutes(1);
+    limits.max[static_cast<size_t>(QuotaType::QUERIES)] = 100;
+    const auto quota_id = access_control.insert(quota);
+
+    auto enabled_quota = access_control.getEnabledQuota(
+        UUIDHelpers::generateV4(), "user", {}, std::make_shared<Poco::Net::IPAddress>("127.0.0.1"), "", "");
+    enabled_quota->used(QuotaType::QUERIES, 1);
+    const auto initial_usages = access_control.getAllQuotasUsage();
+    ASSERT_EQ(1u, initial_usages.size());
+    EXPECT_EQ("user", initial_usages.front().quota_key);
+
+    access_control.update(
+        quota_id,
+        [](const AccessEntityPtr & entity, const UUID &)
+        {
+            auto updated_quota = std::static_pointer_cast<Quota>(entity->clone());
+            updated_quota->key_type = QuotaKeyType::IP_ADDRESS;
+            return updated_quota;
+        });
+
+    const auto usages = access_control.getAllQuotasUsage();
+    ASSERT_EQ(1u, usages.size());
+    EXPECT_EQ("127.0.0.1", usages.front().quota_key);
+    ASSERT_EQ(1u, usages.front().intervals.size());
+    EXPECT_EQ(0u, usages.front().intervals.front().used[static_cast<size_t>(QuotaType::QUERIES)]);
+}

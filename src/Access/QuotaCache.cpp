@@ -40,9 +40,14 @@ QuotaCache::IntervalsStore::IntervalsStore(const QuotaPtr & quota_, const UUID &
 void QuotaCache::IntervalsStore::setQuota(const QuotaPtr & quota_, const UUID & quota_id_)
 {
     std::lock_guard lock{mutex};
+    const bool key_space_changed = quota->key_type != quota_->key_type || quota->ipv4_prefix_bits != quota_->ipv4_prefix_bits
+        || quota->ipv6_prefix_bits != quota_->ipv6_prefix_bits;
     quota = quota_;
     quota_id = quota_id_;
-    rebuildAllIntervals();
+    if (key_space_changed)
+        key_to_intervals.clear();
+    else
+        rebuildAllIntervals();
 }
 
 
