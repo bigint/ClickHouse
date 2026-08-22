@@ -70,7 +70,7 @@ public:
 
 #if USE_SSH
     const std::vector<SSHKey> & getSSHKeys() const { return ssh_keys; }
-    void setSSHKeys(std::vector<SSHKey> && ssh_keys_) { ssh_keys = std::forward<std::vector<SSHKey>>(ssh_keys_); }
+    void setSSHKeys(std::vector<SSHKey> && ssh_keys_);
 #endif
 
     HTTPAuthenticationScheme getHTTPAuthenticationScheme() const { return http_auth_scheme; }

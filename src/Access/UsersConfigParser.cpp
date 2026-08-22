@@ -258,23 +258,26 @@ namespace
             /// Fill list of allowed certificates.
             Poco::Util::AbstractConfiguration::Keys keys;
             config.keys(certificates_config, keys);
+            bool has_certificate_subject = false;
             for (const String & key : keys)
             {
                 if (key.starts_with("common_name"))
                 {
                     String value = config.getString(certificates_config + "." + key);
                     auth_data.addSSLCertificateSubject(X509Certificate::Subjects::Type::CN, std::move(value));
+                    has_certificate_subject = true;
                 }
                 else if (key.starts_with("subject_alt_name"))
                 {
                     String value = config.getString(certificates_config + "." + key);
-                    if (value.empty())
-                        throw Exception(ErrorCodes::BAD_ARGUMENTS, "Expected ssl_certificates.subject_alt_name to not be empty");
                     auth_data.addSSLCertificateSubject(X509Certificate::Subjects::Type::SAN, std::move(value));
+                    has_certificate_subject = true;
                 }
                 else
                     throw Exception(ErrorCodes::BAD_ARGUMENTS, "Unknown certificate pattern type: {}", key);
             }
+            if (!has_certificate_subject)
+                throw Exception(ErrorCodes::BAD_ARGUMENTS, "At least one SSL certificate subject must be specified for user {}", user_name);
 #else
             throw Exception(ErrorCodes::SUPPORT_IS_DISABLED, "SSL certificates support is disabled, because ClickHouse was built without SSL library");
 #endif

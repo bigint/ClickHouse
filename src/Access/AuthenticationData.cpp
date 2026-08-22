@@ -413,6 +413,15 @@ void AuthenticationData::addSSLCertificateSubject(X509Certificate::Subjects::Typ
 }
 #endif
 
+#if USE_SSH
+void AuthenticationData::setSSHKeys(std::vector<SSHKey> && ssh_keys_)
+{
+    if (ssh_keys_.empty())
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "The 'SSH KEY' authentication type requires a non-empty list of keys");
+    ssh_keys = std::move(ssh_keys_);
+}
+#endif
+
 boost::intrusive_ptr<ASTAuthenticationData> AuthenticationData::toAST() const
 {
     auto node = make_intrusive<ASTAuthenticationData>();

@@ -247,3 +247,11 @@ TEST(Authentication, ScramCredentialsCompareCompleteProof)
     EXPECT_EQ(check(encoded_proof, 1), Authentication::CredentialsCheckResult::Fail);
 }
 #endif
+
+#if USE_SSH
+TEST(AuthenticationData, EmptySSHKeyListIsRejected)
+{
+    AuthenticationData authentication_data{AuthenticationType::SSH_KEY};
+    EXPECT_THROW(authentication_data.setSSHKeys({}), Exception);
+}
+#endif

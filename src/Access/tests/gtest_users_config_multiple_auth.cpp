@@ -57,6 +57,21 @@ TEST_F(UsersConfigMultipleAuthTest, SinglePlaintextPassword)
     EXPECT_EQ(user->authentication_methods[0].getType(), AuthenticationType::PLAINTEXT_PASSWORD);
 }
 
+#if USE_SSL
+TEST_F(UsersConfigMultipleAuthTest, EmptySSLCertificateListIsRejected)
+{
+    const auto config = createConfigFromXML(R"(
+        <clickhouse>
+            <users>
+                <test_user><ssl_certificates/></test_user>
+            </users>
+        </clickhouse>
+    )");
+
+    EXPECT_THROW(storage->setConfig(*config), Exception);
+}
+#endif
+
 TEST(UsersConfigAccessStorage, ReplacementDeliversNotifications)
 {
     auto initial_config = createConfigFromXML(R"(
