@@ -88,6 +88,16 @@ bool MaskingPolicy::equal(const IAccessEntity & other) const
         && (where_condition_formated.str() == other_where_condition_formated.str());
 }
 
+std::shared_ptr<IAccessEntity> MaskingPolicy::clone() const
+{
+    auto res = std::make_shared<MaskingPolicy>(*this);
+    if (update_assignments)
+        res->update_assignments = update_assignments->clone();
+    if (where_condition)
+        res->where_condition = where_condition->clone();
+    return res;
+}
+
 std::vector<UUID> MaskingPolicy::findDependencies() const
 {
     return to_roles.findDependencies();

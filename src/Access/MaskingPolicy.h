@@ -53,7 +53,7 @@ struct MaskingPolicy : public IAccessEntity
     RolesOrUsersSet to_roles;
 
     bool equal(const IAccessEntity & other) const override;
-    std::shared_ptr<IAccessEntity> clone() const override { return cloneImpl<MaskingPolicy>(); }
+    std::shared_ptr<IAccessEntity> clone() const override;
     static constexpr auto TYPE = AccessEntityType::MASKING_POLICY;
     AccessEntityType getType() const override { return TYPE; }
 

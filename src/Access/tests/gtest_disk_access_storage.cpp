@@ -10,6 +10,7 @@
 #include <Core/UUID.h>
 #include <IO/WriteHelpers.h>
 #include <Common/Exception.h>
+#include <Parsers/ASTLiteral.h>
 
 #include <Poco/TemporaryFile.h>
 
@@ -46,6 +47,23 @@ TEST(AccessEntityIO, MaskingPolicyRoundTrip)
 
     ASSERT_EQ(restored->getType(), AccessEntityType::MASKING_POLICY);
     EXPECT_EQ(*restored, original);
+}
+
+TEST(AccessEntityIO, MaskingPolicyCloneOwnsExpressionTrees)
+{
+    MaskingPolicy original;
+    original.setFullName("mask", "database", "table");
+    original.update_assignments = make_intrusive<ASTLiteral>(UInt64{1});
+    original.where_condition = make_intrusive<ASTLiteral>(UInt64{2});
+
+    auto cloned = std::static_pointer_cast<MaskingPolicy>(original.clone());
+
+    ASSERT_NE(cloned->update_assignments.get(), original.update_assignments.get());
+    ASSERT_NE(cloned->where_condition.get(), original.where_condition.get());
+    cloned->update_assignments->as<ASTLiteral &>().value = UInt64{3};
+    cloned->where_condition->as<ASTLiteral &>().value = UInt64{4};
+    EXPECT_EQ(original.update_assignments->as<const ASTLiteral &>().value, Field{UInt64{1}});
+    EXPECT_EQ(original.where_condition->as<const ASTLiteral &>().value, Field{UInt64{2}});
 }
 
 TEST(DiskAccessStorageRecovery, RebuildRemovesTempFiles)
