@@ -1,9 +1,10 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <memory>
-#include <optional>
 #include <mutex>
+#include <optional>
 
 #include <base/defines.h>
 #include <Common/ThreadPool_fwd.h>
@@ -71,6 +72,9 @@ private:
 
     std::atomic<bool> watching = false;
     std::unique_ptr<ThreadFromGlobalPool> watching_thread;
+    std::mutex watching_thread_mutex;
+    std::condition_variable watching_stopped;
+    std::mutex watching_stopped_mutex;
     std::shared_ptr<ConcurrentBoundedQueue<UUID>> watched_queue;
 
     Coordination::WatchCallbackPtr watch_entities_list;

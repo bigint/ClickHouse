@@ -1,19 +1,18 @@
 #include <mutex>
 #include <Access/ZooKeeperReplicator.h>
 
-#include <Access/AccessEntityIO.h>
 #include <Access/AccessChangesNotifier.h>
-#include <Common/setThreadName.h>
+#include <Access/AccessEntityIO.h>
+#include <Core/UUID.h>
+#include <IO/ReadHelpers.h>
+#include <IO/WriteHelpers.h>
+#include <Interpreters/Context.h>
+#include <base/range.h>
+#include <Common/ThreadPool.h>
 #include <Common/ZooKeeper/KeeperException.h>
 #include <Common/escapeForFileName.h>
 #include <Common/logger_useful.h>
-#include <Common/ThreadPool.h>
-#include <Interpreters/Context.h>
-#include <IO/ReadHelpers.h>
-#include <IO/WriteHelpers.h>
-#include <base/range.h>
-#include <base/sleep.h>
-#include <Core/UUID.h>
+#include <Common/setThreadName.h>
 
 
 namespace
@@ -105,20 +104,32 @@ void ZooKeeperReplicator::shutdown()
 
 void ZooKeeperReplicator::startWatchingThread()
 {
-    bool prev_watching_flag = watching.exchange(true);
-    if (!prev_watching_flag)
+    std::lock_guard lock{watching_thread_mutex};
+    if (watching.exchange(true))
+        return;
+
+    try
+    {
+        [[maybe_unused]] bool push_result = watched_queue->push(UUIDHelpers::Nil);
         watching_thread = std::make_unique<ThreadFromGlobalPool>(&ZooKeeperReplicator::runWatchingThread, this);
+    }
+    catch (...)
+    {
+        watching = false;
+        throw;
+    }
 }
 
 void ZooKeeperReplicator::stopWatchingThread()
 {
-    bool prev_watching_flag = watching.exchange(false);
-    if (prev_watching_flag)
-    {
-        watched_queue->finish();
-        if (watching_thread && watching_thread->joinable())
-            watching_thread->join();
-    }
+    std::lock_guard lock{watching_thread_mutex};
+    if (!watching.exchange(false))
+        return;
+
+    [[maybe_unused]] bool push_result = watched_queue->push(UUIDHelpers::Nil);
+    watching_stopped.notify_all();
+    if (watching_thread && watching_thread->joinable())
+        watching_thread->join();
 }
 
 template <typename Func>
@@ -443,7 +454,8 @@ void ZooKeeperReplicator::runWatchingThread()
         {
             tryLogCurrentException(&Poco::Logger::get(storage_name), "Will try to restart watching thread after error");
             resetAfterError();
-            sleepForSeconds(5);
+            std::unique_lock lock{watching_stopped_mutex};
+            watching_stopped.wait_for(lock, std::chrono::seconds(5), [this] { return !watching.load(); });
             continue;
         }
 
@@ -554,6 +566,9 @@ bool ZooKeeperReplicator::refresh()
 {
     UUID id;
     if (!watched_queue->tryPop(id, /* timeout_ms: */ 10000))
+        return false;
+
+    if (!watching)
         return false;
 
     auto zookeeper = getZooKeeper();
