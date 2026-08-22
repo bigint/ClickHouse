@@ -41,7 +41,6 @@ TEST(AccessEntityIO, MaskingPolicyRoundTrip)
     MaskingPolicy original;
     original.setFullName("mask", "database", "table");
     original.priority = 7;
-    original.to_roles = RolesOrUsersSet::AllTag{};
 
     const auto restored = deserializeAccessEntity(serializeAccessEntity(original));
 

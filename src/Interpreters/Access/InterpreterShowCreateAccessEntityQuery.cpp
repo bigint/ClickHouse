@@ -252,13 +252,12 @@ namespace
         if (policy.where_condition)
             query->where_condition = policy.where_condition->clone();
 
-        if (!policy.to_roles.empty())
-        {
-            if (attach_mode)
-                query->roles = policy.to_roles.toAST();
-            else
-                query->roles = policy.to_roles.toASTWithNames(*access_control);
-        }
+        /// The masking-policy parser defaults an omitted `TO` clause to `ALL`, so `NONE` must be
+        /// emitted explicitly for an empty set to keep `SHOW CREATE` and persistence fail-closed.
+        if (attach_mode)
+            query->roles = policy.to_roles.toAST();
+        else
+            query->roles = policy.to_roles.toASTWithNames(*access_control);
 
         return query;
     }

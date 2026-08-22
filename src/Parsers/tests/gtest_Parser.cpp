@@ -749,6 +749,10 @@ INSTANTIATE_TEST_SUITE_P(ParserAttachMaskingPolicyQuery, ParserTest,
         {
             "ATTACH MASKING POLICY p ON db.t TO ALL",
             "ATTACH MASKING POLICY p ON db.t TO ALL"
+        },
+        {
+            "ATTACH MASKING POLICY p ON db.t TO NONE",
+            "ATTACH MASKING POLICY p ON db.t TO NONE"
         }
 })));
 
@@ -760,6 +764,10 @@ INSTANTIATE_TEST_SUITE_P(ParserCreateMaskingPolicyQuery, ParserTest,
         {
             "CREATE MASKING POLICY p ON db.t UPDATE email = '***' TO ALL",
             "CREATE MASKING POLICY p ON db.t UPDATE email = '***' TO ALL"
+        },
+        {
+            "CREATE MASKING POLICY p ON db.t UPDATE email = '***' TO NONE",
+            "CREATE MASKING POLICY p ON db.t UPDATE email = '***' TO NONE"
         },
         {
             "CREATE MASKING POLICY p ON db.t UPDATE email = '***' TO ALL PRIORITY -7",

@@ -100,7 +100,7 @@ void ASTCreateMaskingPolicyQuery::formatImpl(WriteBuffer & ostr, const FormatSet
     if (where_condition)
         formatWhereCondition(where_condition, ostr, settings);
 
-    if (roles && (!roles->empty() || alter))
+    if (roles)
         formatToRoles(*roles, ostr, settings);
 
     if (has_priority || priority != 0)
