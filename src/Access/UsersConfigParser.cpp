@@ -49,10 +49,10 @@ namespace ErrorCodes
 
 namespace
 {
-    String unescapeUserName(String user_name)
+    String unescapeConfigKeyName(String name)
     {
-        Poco::replaceInPlace(user_name, "\\.", ".");
-        return user_name;
+        Poco::replaceInPlace(name, "\\.", ".");
+        return name;
     }
 
     template <typename T>
@@ -427,7 +427,7 @@ namespace
 
         /// If the user name contains a dot, it is escaped with a backslash when parsed from the config file.
         /// We need to remove the backslash to get the correct user name.
-        user_name = unescapeUserName(std::move(user_name));
+        user_name = unescapeConfigKeyName(std::move(user_name));
         user->setName(user_name);
 
         const auto auth_methods_config = user_config + ".auth_methods";
@@ -630,8 +630,9 @@ namespace
         const AccessControl & access_control,
         LoggerPtr log)
     {
+        const String normalized_role_name = unescapeConfigKeyName(role_name);
         auto role = std::make_shared<Role>();
-        role->setName(role_name);
+        role->setName(normalized_role_name);
 
         String role_config = "roles." + role_name;
 
@@ -653,8 +654,9 @@ namespace
 
     QuotaPtr parseQuota(const Poco::Util::AbstractConfiguration & config, const String & quota_name, const std::vector<UUID> & user_ids)
     {
+        const String normalized_quota_name = unescapeConfigKeyName(quota_name);
         auto quota = std::make_shared<Quota>();
-        quota->setName(quota_name);
+        quota->setName(normalized_quota_name);
 
         auto parse_prefix_bits = [&](const String & path, UInt8 max_bits) -> std::optional<MaskBits>
         {
@@ -665,7 +667,7 @@ namespace
             if (raw_value > max_bits)
                 throw Exception(
                     ErrorCodes::BAD_ARGUMENTS,
-                    "Quota {}: {} must be between 0 and {}", quota_name, path, static_cast<unsigned>(max_bits));
+                    "Quota {}: {} must be between 0 and {}", normalized_quota_name, path, static_cast<unsigned>(max_bits));
 
             return MaskBits{static_cast<UInt8>(raw_value)};
         };
@@ -698,7 +700,7 @@ namespace
             throw Exception(
                 ErrorCodes::BAD_ARGUMENTS,
                 "Quota {}: ipv4_prefix_bits and ipv6_prefix_bits can only be used with keyed_by_ip or keyed_by_forwarded_ip",
-                quota_name);
+                normalized_quota_name);
 
         Poco::Util::AbstractConfiguration::Keys interval_keys;
         config.keys(quota_config, interval_keys);
@@ -803,8 +805,9 @@ namespace
         const std::unordered_set<UUID> & allowed_parent_profile_ids,
         const AccessControl & access_control)
     {
+        const String normalized_profile_name = unescapeConfigKeyName(profile_name);
         auto profile = std::make_shared<SettingsProfile>();
-        profile->setName(profile_name);
+        profile->setName(normalized_profile_name);
         String profile_config = "profiles." + profile_name;
 
         Poco::Util::AbstractConfiguration::Keys keys;
@@ -930,7 +933,7 @@ std::vector<AccessEntityPtr> UsersConfigParser::parseQuotas(const Poco::Util::Ab
     {
         if (config.has("users." + user_name + ".quota"))
             quota_to_user_ids[config.getString("users." + user_name + ".quota")].push_back(
-                generateID(AccessEntityType::USER, unescapeUserName(user_name)));
+                generateID(AccessEntityType::USER, unescapeConfigKeyName(user_name)));
     }
 
     Poco::Util::AbstractConfiguration::Keys quota_names;
@@ -943,7 +946,7 @@ std::vector<AccessEntityPtr> UsersConfigParser::parseQuotas(const Poco::Util::Ab
     {
         try
         {
-            auto it = quota_to_user_ids.find(quota_name);
+            auto it = quota_to_user_ids.find(unescapeConfigKeyName(quota_name));
             const std::vector<UUID> & quota_users = (it != quota_to_user_ids.end()) ? std::move(it->second) : std::vector<UUID>{};
             quotas.push_back(parseQuota(config, quota_name, quota_users));
         }
@@ -968,7 +971,7 @@ std::vector<AccessEntityPtr> UsersConfigParser::parseRowPolicies(const Poco::Uti
 
     for (const String & user_name : user_names)
     {
-        const String normalized_user_name = unescapeUserName(user_name);
+        const String normalized_user_name = unescapeConfigKeyName(user_name);
         const String databases_config = "users." + user_name + ".databases";
         if (config.has(databases_config))
         {
@@ -1016,7 +1019,7 @@ std::vector<AccessEntityPtr> UsersConfigParser::parseRowPolicies(const Poco::Uti
         const auto & [database, table_name] = database_and_table_name;
         for (const String & config_user_name : user_names)
         {
-            const String user_name = unescapeUserName(config_user_name);
+            const String user_name = unescapeConfigKeyName(config_user_name);
             String filter;
             auto it = user_to_filters.find(user_name);
             if (it != user_to_filters.end())
@@ -1076,7 +1079,7 @@ std::unordered_set<UUID> UsersConfigParser::getAllowedIDs(
     config.keys(configuration_key, keys);
     std::unordered_set<UUID> ids;
     for (const auto & key : keys)
-        ids.emplace(generateID(type, key));
+        ids.emplace(generateID(type, unescapeConfigKeyName(key)));
     return ids;
 }
 }

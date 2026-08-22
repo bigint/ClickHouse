@@ -1,6 +1,8 @@
 #include <Access/AccessControl.h>
 #include <Access/Quota.h>
+#include <Access/Role.h>
 #include <Access/RowPolicy.h>
+#include <Access/SettingsProfile.h>
 #include <Access/User.h>
 #include <Access/UsersConfigAccessStorage.h>
 #include <gtest/gtest.h>
@@ -77,6 +79,60 @@ TEST_F(UsersConfigMultipleAuthTest, UndefinedRoleGrantIsNotRetained)
     const auto user = storage->tryRead<User>("test_user");
     ASSERT_TRUE(user);
     EXPECT_TRUE(user->granted_roles.getGranted().empty());
+}
+
+TEST_F(UsersConfigMultipleAuthTest, DottedEntityNamesUseUnescapedIDs)
+{
+    const auto config = createConfigFromXML(R"(
+        <clickhouse>
+            <roles>
+                <role.with.dot/>
+            </roles>
+            <profiles>
+                <profile.with.dot>
+                    <max_threads>1</max_threads>
+                </profile.with.dot>
+            </profiles>
+            <quotas>
+                <quota.with.dot>
+                    <interval>
+                        <duration>60</duration>
+                        <queries>10</queries>
+                    </interval>
+                </quota.with.dot>
+            </quotas>
+            <users>
+                <test_user>
+                    <password></password>
+                    <profile>profile.with.dot</profile>
+                    <quota>quota.with.dot</quota>
+                    <grants>
+                        <query>GRANT `role.with.dot`</query>
+                    </grants>
+                </test_user>
+            </users>
+        </clickhouse>
+    )");
+
+    storage->setConfig(*config);
+
+    const auto role_id = storage->find<Role>("role.with.dot");
+    const auto profile_id = storage->find<SettingsProfile>("profile.with.dot");
+    const auto user_id = storage->find<User>("test_user");
+    const auto role = storage->tryRead<Role>("role.with.dot");
+    const auto profile = storage->tryRead<SettingsProfile>("profile.with.dot");
+    const auto quota = storage->tryRead<Quota>("quota.with.dot");
+    const auto user = storage->tryRead<User>("test_user");
+    ASSERT_TRUE(role);
+    ASSERT_TRUE(profile);
+    ASSERT_TRUE(quota);
+    ASSERT_TRUE(user);
+    ASSERT_TRUE(role_id);
+    ASSERT_TRUE(profile_id);
+    ASSERT_TRUE(user_id);
+    EXPECT_TRUE(user->granted_roles.isGranted(*role_id));
+    EXPECT_EQ(user->settings.toProfileIDs(), UUIDs{*profile_id});
+    EXPECT_TRUE(quota->to_roles.match(*user_id));
 }
 
 #if USE_SSL
