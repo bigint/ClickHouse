@@ -24,9 +24,10 @@ namespace DB
 {
 namespace ErrorCodes
 {
-    extern const int DIRECTORY_DOESNT_EXIST;
-    extern const int FILE_DOESNT_EXIST;
-    extern const int LOGICAL_ERROR;
+extern const int CORRUPTED_DATA;
+extern const int DIRECTORY_DOESNT_EXIST;
+extern const int FILE_DOESNT_EXIST;
+extern const int LOGICAL_ERROR;
 }
 
 
@@ -151,6 +152,13 @@ namespace
     String getNeedRebuildListsMarkFilePath(const String & directory_path)
     {
         return directory_path + "need_rebuild_lists.mark";
+    }
+
+
+    void createNeedRebuildListsMark(const String & directory_path)
+    {
+        WriteBufferFromFile out{getNeedRebuildListsMarkFilePath(directory_path)};
+        out.close();
     }
 
 
@@ -331,8 +339,7 @@ void DiskAccessStorage::scheduleWriteLists(AccessEntityType type)
 
     /// Create the 'need_rebuild_lists.mark' file.
     /// This file will be used later to find out if writing lists is successful or not.
-    WriteBufferFromFile out{getNeedRebuildListsMarkFilePath(directory_path)};
-    out.close();
+    createNeedRebuildListsMark(directory_path);
 
     LOG_TRACE(getLogger(), "Created need_rebuild_lists.mark, starting background lists-writing thread");
 
@@ -540,7 +547,31 @@ AccessEntityPtr DiskAccessStorage::readImpl(const UUID & id, bool throw_if_not_e
     }
 
     if (isNotLoadedFromDisk(entity))
-        entity = readAccessEntityFromDisk(id);
+    {
+        AccessEntityPtr loaded_entity;
+        try
+        {
+            loaded_entity = readAccessEntityFromDisk(id);
+        }
+        catch (...)
+        {
+            createNeedRebuildListsMark(directory_path);
+            throw;
+        }
+
+        if ((loaded_entity->getType() != entity->getType()) || (loaded_entity->getName() != entity->getName()))
+        {
+            createNeedRebuildListsMark(directory_path);
+            throw Exception(
+                ErrorCodes::CORRUPTED_DATA,
+                "Access entity {} in {} is {}, but list files record {}",
+                id,
+                getEntityFilePath(directory_path, id),
+                loaded_entity->formatTypeWithName(),
+                entity->formatTypeWithName());
+        }
+        entity = std::move(loaded_entity);
+    }
 
     /// Will replace existing EntityOnDisk with actual entity
     memory_storage.insertNoNotify(id, entity, /* replace_if_exists= */ true, /* throw_if_exists= */ false, /* conflicting_id= */ nullptr);

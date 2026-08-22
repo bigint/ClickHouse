@@ -8,6 +8,7 @@
 #include <Access/User.h>
 #include <Core/UUID.h>
 #include <IO/WriteHelpers.h>
+#include <Common/Exception.h>
 
 #include <Poco/TemporaryFile.h>
 
@@ -144,6 +145,40 @@ TEST(DiskAccessStorage, ReplacingEntityTypeRewritesBothLists)
     EXPECT_TRUE(storage.exists(id));
     EXPECT_TRUE(storage.find<Role>("entity").has_value());
     EXPECT_FALSE(storage.find<User>("entity").has_value());
+}
+
+TEST(DiskAccessStorage, LazyMaterializationMarksMismatchedListsForRebuild)
+{
+    Poco::TemporaryFile temp_dir;
+    temp_dir.createDirectories();
+    String dir = temp_dir.path() + "/";
+
+    const auto id = UUIDHelpers::generateV4();
+    {
+        AccessChangesNotifier notifier;
+        DiskAccessStorage storage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false);
+        auto user = std::make_shared<User>();
+        user->setName("alice");
+        storage.insert(id, user, false, true);
+    }
+
+    auto role = std::make_shared<Role>();
+    role->setName("reader");
+    writeEntityToFile(std::filesystem::path(dir) / (toString(id) + ".sql"), *role);
+
+    {
+        AccessChangesNotifier notifier;
+        DiskAccessStorage storage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false);
+        EXPECT_THROW(storage.read<User>(id), Exception);
+        EXPECT_TRUE(storage.find<User>("alice").has_value());
+        EXPECT_FALSE(storage.find<Role>("reader").has_value());
+        EXPECT_TRUE(std::filesystem::exists(std::filesystem::path(dir) / "need_rebuild_lists.mark"));
+    }
+
+    AccessChangesNotifier notifier;
+    DiskAccessStorage storage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false);
+    EXPECT_FALSE(storage.find<User>("alice").has_value());
+    EXPECT_EQ(storage.getID<Role>("reader"), id);
 }
 
 TEST(AccessControl, DiskStorageInitialNotificationsAreDeliveredAfterAttachment)
