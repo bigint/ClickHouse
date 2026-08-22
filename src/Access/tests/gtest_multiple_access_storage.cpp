@@ -367,7 +367,7 @@ TEST(MultipleAccessStorage, FindAllOmitsIDsShadowedByAnotherEntityType)
     EXPECT_TRUE(storage.findAll<User>().empty());
 }
 
-TEST(MultipleAccessStorage, FindAllPreservesDuplicateVisibleEntityIDs)
+TEST(MultipleAccessStorage, FindAllDeduplicatesVisibleEntityIDs)
 {
     AccessChangesNotifier notifier;
     auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", notifier, true);
@@ -380,7 +380,7 @@ TEST(MultipleAccessStorage, FindAllPreservesDuplicateVisibleEntityIDs)
     MultipleAccessStorage storage;
     storage.setStorages({higher_priority_storage, lower_priority_storage});
 
-    EXPECT_EQ(storage.findAll<User>(), (std::vector<UUID>{id, id}));
+    EXPECT_EQ(storage.findAll<User>(), std::vector<UUID>{id});
 }
 
 TEST(MultipleAccessStorage, MovePreservesReferencesToMovedEntity)

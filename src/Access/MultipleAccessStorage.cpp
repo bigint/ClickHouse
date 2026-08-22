@@ -10,6 +10,7 @@
 #include <boost/range/algorithm/find.hpp>
 
 #include <exception>
+#include <unordered_set>
 
 
 namespace DB
@@ -146,12 +147,18 @@ std::optional<UUID> MultipleAccessStorage::findImpl(AccessEntityType type, const
 std::vector<UUID> MultipleAccessStorage::findAllImpl(AccessEntityType type) const
 {
     std::vector<UUID> all_ids;
+    std::unordered_set<UUID> visited_ids;
     auto storages = getStoragesInternal();
     for (const auto & storage : *storages)
     {
         auto ids = storage->findAll(type);
         for (const auto & id : ids)
         {
+            /// Several nested storages can contain the same ID. The composite exposes only
+            /// the highest-priority entity, so return its ID once rather than once per copy.
+            if (!visited_ids.emplace(id).second)
+                continue;
+
             for (const auto & visible_storage : *storages)
             {
                 auto name_and_type = visible_storage->tryReadNameWithType(id);
