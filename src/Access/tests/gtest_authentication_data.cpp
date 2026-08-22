@@ -8,6 +8,7 @@
 #include <Common/SettingsChanges.h>
 #include <Interpreters/ClientInfo.h>
 #include <Parsers/ASTLiteral.h>
+#include <Poco/SHA1Engine.h>
 #include <gtest/gtest.h>
 
 using namespace DB;
@@ -192,6 +193,34 @@ TEST(Authentication, OneTimePasswordRejectsNonASCIIBytes)
     EXPECT_FALSE(checkOneTimePassword(password, secret));
 }
 
+TEST(Authentication, MySQLCredentialsCannotBypassOneTimePassword)
+{
+    const String password = "password";
+    const String scramble = "01234567890123456789";
+    const auto password_sha1 = AuthenticationData::Util::encodeSHA1(password);
+    const auto password_double_sha1 = AuthenticationData::Util::encodeSHA1(password_sha1);
+
+    Poco::SHA1Engine engine;
+    engine.update(scramble.data(), scramble.size());
+    engine.update(password_double_sha1.data(), password_double_sha1.size());
+    const auto & challenge_digest = engine.digest();
+
+    String scrambled_password(password_sha1.size(), 0);
+    for (size_t i = 0; i != password_sha1.size(); ++i)
+        scrambled_password[i] = static_cast<char>(password_sha1[i] ^ challenge_digest[i]);
+
+    AuthenticationData authentication_data{AuthenticationType::PLAINTEXT_PASSWORD};
+    authentication_data.setPassword(password, OneTimePasswordSecret{"JBSWY3DPEHPK3PXP"}, true);
+    MySQLNative41Credentials credentials{"user", scramble, scrambled_password};
+    ExternalAuthenticators external_authenticators;
+    ClientInfo client_info;
+    SettingsChanges settings;
+
+    EXPECT_EQ(
+        Authentication::areCredentialsValid(credentials, authentication_data, external_authenticators, client_info, settings),
+        Authentication::CredentialsCheckResult::Fail);
+}
+
 #if USE_SSL
 TEST(AuthenticationData, EmptySSLCertificateSubjectsAreRejected)
 {
@@ -261,6 +290,11 @@ TEST(Authentication, ScramCredentialsCompareCompleteProof)
     };
 
     EXPECT_EQ(check(encoded_proof), Authentication::CredentialsCheckResult::Success);
+
+    authentication_data.setPasswordHashBinary(
+        salted_password, OneTimePasswordSecret{"JBSWY3DPEHPK3PXP"}, true);
+    EXPECT_EQ(check(encoded_proof), Authentication::CredentialsCheckResult::Fail);
+    authentication_data.setPasswordHashBinary(salted_password, std::nullopt, true);
 
     String wrong_first_byte = encoded_proof;
     wrong_first_byte.front() ^= 1;

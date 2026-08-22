@@ -113,6 +113,9 @@ namespace
     {
         if (authentication_method.getType() != AuthenticationType::SCRAM_SHA256_PASSWORD)
             return false;
+        /// The SCRAM exchange has no way to carry the configured one-time password.
+        if (authentication_method.getOneTimePassword())
+            return false;
         if (scram_sha256_credentials->getIterations() != Util::SCRAM_SHA256_ITERATIONS)
             return false;
 
@@ -130,6 +133,11 @@ namespace
         const MySQLNative41Credentials * mysql_credentials,
         const AuthenticationData & authentication_method)
     {
+        /// The native MySQL challenge response proves only the password and cannot carry
+        /// the configured one-time password, so it must not bypass the second factor.
+        if (authentication_method.getOneTimePassword())
+            return false;
+
         switch (authentication_method.getType())
         {
             case AuthenticationType::PLAINTEXT_PASSWORD:
