@@ -545,7 +545,15 @@ void AccessControl::addStoragesFromMainConfig(
 
 void AccessControl::reload(ReloadMode reload_mode)
 {
-    MultipleAccessStorage::reload(reload_mode);
+    try
+    {
+        MultipleAccessStorage::reload(reload_mode);
+    }
+    catch (...)
+    {
+        changes_notifier->sendNotifications();
+        throw;
+    }
     changes_notifier->sendNotifications();
 }
 

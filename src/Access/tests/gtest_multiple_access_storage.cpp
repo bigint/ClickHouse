@@ -6,10 +6,16 @@
 #include <Access/MultipleAccessStorage.h>
 #include <Access/Role.h>
 #include <Access/User.h>
+#include <Core/UUID.h>
 #include <Common/Exception.h>
 
 
 using namespace DB;
+
+namespace DB::ErrorCodes
+{
+extern const int UNFINISHED;
+}
 
 namespace
 {
@@ -21,6 +27,26 @@ AccessEntityPtr makeUser(const String & name)
     return user;
 }
 
+class ThrowingReloadMemoryAccessStorage : public MemoryAccessStorage
+{
+public:
+    ThrowingReloadMemoryAccessStorage(AccessChangesNotifier & notifier_, UUID changed_id_)
+        : MemoryAccessStorage("throwing_reload", notifier_, true)
+        , notifier(notifier_)
+        , changed_id(changed_id_)
+    {
+    }
+
+    void reload(ReloadMode) override
+    {
+        notifier.onEntityRemoved(changed_id, AccessEntityType::ROLE);
+        throw Exception(ErrorCodes::UNFINISHED, "reload failed");
+    }
+
+private:
+    AccessChangesNotifier & notifier;
+    UUID changed_id;
+};
 }
 
 TEST(MultipleAccessStorage, CollisionCheckUsesEntityReturnedToNestedStorage)
@@ -127,4 +153,18 @@ TEST(AccessControl, MoveDeliversNestedStorageNotifications)
 
     EXPECT_EQ(handler_calls, 1u);
     EXPECT_EQ(delivered_changes, 2u);
+}
+
+TEST(AccessControl, ReloadFailureDeliversQueuedNotifications)
+{
+    AccessControl access_control;
+    const auto changed_id = UUIDHelpers::generateV4();
+    access_control.setStorages({std::make_shared<ThrowingReloadMemoryAccessStorage>(access_control.getChangesNotifier(), changed_id)});
+
+    size_t delivered_changes = 0;
+    auto subscription = access_control.subscribeForChanges<Role>([&](const std::vector<AccessChangesNotifier::Change> & changes)
+                                                                 { delivered_changes += changes.size(); });
+
+    EXPECT_THROW(access_control.reload(IAccessStorage::ReloadMode::ALL), Exception);
+    EXPECT_EQ(delivered_changes, 1u);
 }
