@@ -12,6 +12,7 @@
 #include <Poco/JSON/Object.h>
 #include <Poco/JSON/Stringifier.h>
 #include <sstream>
+#include <unordered_set>
 
 
 namespace DB
@@ -93,8 +94,12 @@ void LDAPAccessStorage::setConfiguration(const Poco::Util::AbstractConfiguration
     role_change_subscription = access_control.subscribeForChanges<Role>(
         [this] (const std::vector<AccessChangesNotifier::Change> & changes)
         {
+            std::unordered_set<UUID> changed_ids;
             for (const auto & change : changes)
-                this->processRoleChange(change.id, change.entity);
+                changed_ids.emplace(change.id);
+
+            for (const auto & id : changed_ids)
+                this->processRoleChange(id, access_control.tryRead(id));
         }
     );
 }
