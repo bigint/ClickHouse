@@ -268,6 +268,10 @@ HTTPAuthClientParams parseHTTPAuthParams(const Poco::Util::AbstractConfiguration
     http_auth_params.max_tries = static_cast<size_t>(max_tries);
     http_auth_params.retry_initial_backoff_ms = get_non_negative("retry_initial_backoff_ms", 50);
     http_auth_params.retry_max_backoff_ms = get_non_negative("retry_max_backoff_ms", 1000);
+    if (http_auth_params.retry_initial_backoff_ms > http_auth_params.retry_max_backoff_ms)
+        throw Exception(
+            ErrorCodes::BAD_ARGUMENTS,
+            "HTTP authentication setting 'retry_initial_backoff_ms' must not exceed 'retry_max_backoff_ms'");
 
     Strings forward_headers;
     config.keys(prefix + ".forward_headers", forward_headers);

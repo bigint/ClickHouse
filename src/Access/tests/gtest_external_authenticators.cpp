@@ -51,4 +51,23 @@ TEST(ExternalAuthenticators, ResetRemovesHTTPServers)
     EXPECT_THROW(ExternalAuthenticatorsTestAccess::getHTTPAuthenticationParams(authenticators, "primary"), Exception);
 }
 
+TEST(ExternalAuthenticators, RejectsInitialBackoffAboveMaximum)
+{
+    ExternalAuthenticators authenticators;
+    const auto config = createConfig(R"(
+        <clickhouse>
+            <http_authentication_servers>
+                <primary>
+                    <uri>http://127.0.0.1:1/authenticate</uri>
+                    <retry_initial_backoff_ms>1001</retry_initial_backoff_ms>
+                    <retry_max_backoff_ms>1000</retry_max_backoff_ms>
+                </primary>
+            </http_authentication_servers>
+        </clickhouse>
+    )");
+    authenticators.setConfiguration(*config, getLogger("ExternalAuthenticatorsBackoffTest"));
+
+    EXPECT_THROW(ExternalAuthenticatorsTestAccess::getHTTPAuthenticationParams(authenticators, "primary"), Exception);
+}
+
 }
