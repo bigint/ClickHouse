@@ -1,24 +1,23 @@
-#include <Common/StringUtils.h>
-#include <Access/DiskAccessStorage.h>
-#include <Access/AccessEntityIO.h>
+#include <filesystem>
+#include <memory>
 #include <Access/AccessChangesNotifier.h>
+#include <Access/AccessEntityIO.h>
+#include <Access/DiskAccessStorage.h>
 #include <Access/MemoryAccessStorage.h>
-#include <IO/WriteHelpers.h>
-#include <IO/ReadHelpers.h>
 #include <IO/ReadBufferFromFile.h>
+#include <IO/ReadHelpers.h>
 #include <IO/WriteBufferFromFile.h>
+#include <IO/WriteHelpers.h>
 #include <Interpreters/Access/InterpreterCreateUserQuery.h>
 #include <Interpreters/Access/InterpreterShowGrantsQuery.h>
-#include <Common/logger_useful.h>
-#include <Common/ThreadPool.h>
+#include <base/range.h>
+#include <boost/range/adaptor/map.hpp>
 #include <Poco/JSON/JSON.h>
 #include <Poco/JSON/Object.h>
 #include <Poco/JSON/Stringifier.h>
-#include <boost/range/adaptor/map.hpp>
-#include <base/range.h>
-#include <filesystem>
-#include <fstream>
-#include <memory>
+#include <Common/StringUtils.h>
+#include <Common/ThreadPool.h>
+#include <Common/logger_useful.h>
 
 
 namespace DB
@@ -332,7 +331,7 @@ void DiskAccessStorage::scheduleWriteLists(AccessEntityType type)
 
     /// Create the 'need_rebuild_lists.mark' file.
     /// This file will be used later to find out if writing lists is successful or not.
-    std::ofstream out{getNeedRebuildListsMarkFilePath(directory_path)};
+    WriteBufferFromFile out{getNeedRebuildListsMarkFilePath(directory_path)};
     out.close();
 
     LOG_TRACE(getLogger(), "Created need_rebuild_lists.mark, starting background lists-writing thread");
