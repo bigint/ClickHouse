@@ -395,6 +395,9 @@ void ContextAccess::setUser(const UserPtr & user_) const
         roles_info = nullptr;
         enabled_row_policies = nullptr;
         row_policies_of_initial_user = nullptr;
+#if CLICKHOUSE_CLOUD
+        enabled_masking_policies = nullptr;
+#endif
         enabled_quota = nullptr;
         enabled_settings = nullptr;
         return;
