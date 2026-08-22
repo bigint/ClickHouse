@@ -13,6 +13,7 @@
 
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -26,6 +27,43 @@ class MemoryAccessStorageTestAdapter : public MemoryAccessStorage
 {
 public:
     using MemoryAccessStorage::clearConflictsInEntitiesList;
+};
+
+class ThrowingRemoveAccessStorage : public IAccessStorage
+{
+public:
+    explicit ThrowingRemoveAccessStorage(AccessChangesNotifier & notifier)
+        : IAccessStorage("throwing_remove")
+        , memory_storage("throwing_remove_memory", notifier, true)
+    {
+    }
+
+    UUID insertEntity(const AccessEntityPtr & entity) { return memory_storage.insert(entity); }
+    void setThrowID(const UUID & id) { throw_id = id; }
+
+    bool exists(const UUID & id) const override { return memory_storage.exists(id); }
+
+protected:
+    std::optional<UUID> findImpl(AccessEntityType type, const String & name) const override { return memory_storage.find(type, name); }
+    std::vector<UUID> findAllImpl(AccessEntityType type) const override { return memory_storage.findAll(type); }
+    AccessEntityPtr readImpl(const UUID & id, bool throw_if_not_exists) const override
+    {
+        return memory_storage.read(id, throw_if_not_exists);
+    }
+    bool removeImpl(const UUID & id, bool throw_if_not_exists) override
+    {
+        if (id == throw_id)
+            throw std::runtime_error("remove failed");
+        return memory_storage.remove(id, throw_if_not_exists);
+    }
+    bool updateImpl(const UUID & id, const UpdateFunc & update_func, bool throw_if_not_exists) override
+    {
+        return memory_storage.update(id, update_func, throw_if_not_exists);
+    }
+
+private:
+    MemoryAccessStorage memory_storage;
+    UUID throw_id = UUIDHelpers::Nil;
 };
 
 template <typename Entity>
@@ -104,4 +142,24 @@ TEST(MemoryAccessStorage, SetAllWithoutNotificationsSuppressesRemovals)
     notifier.sendNotifications();
 
     EXPECT_EQ(delivered_changes, 0u);
+}
+
+TEST(IAccessStorage, BatchRemovalCleansDependenciesAfterStandardException)
+{
+    AccessChangesNotifier notifier;
+    ThrowingRemoveAccessStorage storage(notifier);
+
+    const auto removed_role_id = storage.insertEntity(makeEntity<Role>("removed_role"));
+    const auto retained_role_id = storage.insertEntity(makeEntity<Role>("retained_role"));
+    storage.setThrowID(retained_role_id);
+
+    auto user = std::make_shared<User>();
+    user->setName("user");
+    user->granted_roles.grant(removed_role_id);
+    const auto user_id = storage.insertEntity(user);
+
+    EXPECT_THROW(storage.remove({removed_role_id, retained_role_id}), std::runtime_error);
+    EXPECT_FALSE(storage.exists(removed_role_id));
+    EXPECT_TRUE(storage.exists(retained_role_id));
+    EXPECT_FALSE(storage.read<User>(user_id)->granted_roles.isGranted(removed_role_id));
 }

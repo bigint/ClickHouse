@@ -344,6 +344,15 @@ std::vector<UUID> IAccessStorage::remove(const std::vector<UUID> & ids, bool thr
 
     Strings removed_names;
     std::vector<UUID> removed_ids;
+    auto cleanup_removed_references = [&]
+    {
+        if (!removed_ids.empty() && remove_depth == 1)
+        {
+            std::unordered_set<UUID> removed_set(removed_ids.begin(), removed_ids.end());
+            removeReferencesToRemovedIDs(removed_set);
+        }
+    };
+
     try
     {
         std::vector<UUID> readonly_ids;
@@ -385,11 +394,7 @@ std::vector<UUID> IAccessStorage::remove(const std::vector<UUID> & ids, bool thr
     {
         /// Even on failure, clean up references for the entities we did remove so the
         /// access state on disk does not retain dangling UUIDs.
-        if (!removed_ids.empty() && remove_depth == 1)
-        {
-            std::unordered_set<UUID> removed_set(removed_ids.begin(), removed_ids.end());
-            removeReferencesToRemovedIDs(removed_set);
-        }
+        cleanup_removed_references();
 
         /// Try to add more information to the error message.
         if (!removed_names.empty())
@@ -405,12 +410,13 @@ std::vector<UUID> IAccessStorage::remove(const std::vector<UUID> & ids, bool thr
         }
         throw;
     }
-
-    if (!removed_ids.empty() && remove_depth == 1)
+    catch (...)
     {
-        std::unordered_set<UUID> removed_set(removed_ids.begin(), removed_ids.end());
-        removeReferencesToRemovedIDs(removed_set);
+        cleanup_removed_references();
+        throw;
     }
+
+    cleanup_removed_references();
     return removed_ids;
 }
 
