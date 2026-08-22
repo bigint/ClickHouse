@@ -383,6 +383,42 @@ TEST(MultipleAccessStorage, FindAllDeduplicatesVisibleEntityIDs)
     EXPECT_EQ(storage.findAll<User>(), std::vector<UUID>{id});
 }
 
+TEST(MultipleAccessStorage, FindAllOmitsNamesShadowedByHigherPriorityStorage)
+{
+    AccessChangesNotifier notifier;
+    auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", notifier, true);
+    auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", notifier, true);
+
+    const auto higher_priority_id = higher_priority_storage->insert(makeUser("same_name"));
+    lower_priority_storage->insert(makeUser("same_name"));
+
+    MultipleAccessStorage storage;
+    storage.setStorages({higher_priority_storage, lower_priority_storage});
+
+    EXPECT_EQ(storage.findAll<User>(), std::vector<UUID>{higher_priority_id});
+}
+
+TEST(MultipleAccessStorage, FindSkipsCandidateWhoseIDIsShadowed)
+{
+    AccessChangesNotifier notifier;
+    auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", notifier, true);
+    auto middle_priority_storage = std::make_shared<MemoryAccessStorage>("middle_priority", notifier, true);
+    auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", notifier, true);
+
+    const auto shadowed_id = UUIDHelpers::generateV4();
+    auto higher_priority_role = std::make_shared<Role>();
+    higher_priority_role->setName("role_with_same_id");
+    higher_priority_storage->insert(shadowed_id, higher_priority_role, false, true);
+    middle_priority_storage->insert(shadowed_id, makeUser("target_user"), false, true);
+    const auto visible_user_id = lower_priority_storage->insert(makeUser("target_user"));
+
+    MultipleAccessStorage storage;
+    storage.setStorages({higher_priority_storage, middle_priority_storage, lower_priority_storage});
+
+    EXPECT_EQ(storage.find<User>("target_user"), visible_user_id);
+    EXPECT_EQ(storage.findAll<User>(), std::vector<UUID>{visible_user_id});
+}
+
 TEST(MultipleAccessStorage, MovePreservesReferencesToMovedEntity)
 {
     AccessChangesNotifier notifier;

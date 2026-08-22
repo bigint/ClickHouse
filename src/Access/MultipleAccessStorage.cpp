@@ -130,11 +130,26 @@ std::shared_ptr<const Storages> MultipleAccessStorage::getStoragesInternal() con
 std::optional<UUID> MultipleAccessStorage::findImpl(AccessEntityType type, const String & name) const
 {
     auto storages = getStoragesInternal();
-    for (const auto & storage : *storages)
+    for (size_t i = 0; i != storages->size(); ++i)
     {
+        const auto & storage = (*storages)[i];
         auto id = storage->find(type, name);
         if (id)
         {
+            /// The candidate itself can be hidden by an entity with the same ID in a
+            /// higher-priority storage (possibly even an entity of another type).
+            bool id_is_shadowed = false;
+            for (size_t higher = 0; higher != i; ++higher)
+            {
+                if ((*storages)[higher]->exists(*id))
+                {
+                    id_is_shadowed = true;
+                    break;
+                }
+            }
+            if (id_is_shadowed)
+                continue;
+
             std::lock_guard lock{mutex};
             ids_cache.set(*id, storage);
             return id;
@@ -148,6 +163,7 @@ std::vector<UUID> MultipleAccessStorage::findAllImpl(AccessEntityType type) cons
 {
     std::vector<UUID> all_ids;
     std::unordered_set<UUID> visited_ids;
+    std::unordered_set<String> visited_names;
     auto storages = getStoragesInternal();
     for (const auto & storage : *storages)
     {
@@ -165,7 +181,10 @@ std::vector<UUID> MultipleAccessStorage::findAllImpl(AccessEntityType type) cons
                 if (!name_and_type)
                     continue;
 
-                if (name_and_type->second == type)
+                /// The ID belongs to the first storage which contains it. A same-ID
+                /// candidate from any lower storage is hidden, regardless of its type.
+                if (visible_storage == storage && name_and_type->second == type
+                    && visited_names.emplace(name_and_type->first).second)
                     all_ids.push_back(id);
                 break;
             }
