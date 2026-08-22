@@ -148,6 +148,7 @@ bool AuthenticationData::Util::checkPasswordBcrypt(std::string_view password [[m
 bool operator ==(const AuthenticationData & lhs, const AuthenticationData & rhs)
 {
     return (lhs.type == rhs.type) && (lhs.password_hash == rhs.password_hash)
+        && (lhs.otp_secret == rhs.otp_secret) && (lhs.salt == rhs.salt)
         && (lhs.ldap_server_name == rhs.ldap_server_name) && (lhs.kerberos_realm == rhs.kerberos_realm)
 #if USE_SSL
         && (lhs.ssl_certificate_subjects == rhs.ssl_certificate_subjects)
