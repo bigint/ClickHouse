@@ -46,6 +46,19 @@ TEST(AuthenticationData, NoAuthenticationRoundTripPreservesValidUntil)
     EXPECT_EQ(restored.getValidUntil(), original.getValidUntil());
 }
 
+TEST(AuthenticationData, EmptyPlaintextPasswordRoundTrips)
+{
+    AuthenticationData original{AuthenticationType::PLAINTEXT_PASSWORD};
+    original.setPassword("", std::nullopt, true);
+
+    EXPECT_TRUE(original.getPassword().empty());
+    EXPECT_TRUE(AuthenticationData::Util::digestToString(AuthenticationData::Digest{}).empty());
+    EXPECT_TRUE(AuthenticationData::Util::stringToDigest(std::string_view{}).empty());
+
+    const auto restored = AuthenticationData::fromAST(*original.toAST(), nullptr, false);
+    EXPECT_EQ(restored, original);
+}
+
 TEST(AuthenticationData, MalformedASTIsRejected)
 {
     ASTAuthenticationData missing_type;

@@ -230,7 +230,7 @@ void AuthenticationData::setPasswordBcrypt(const String & password_, int workfac
 String AuthenticationData::getPassword() const
 {
     if (type == AuthenticationType::PLAINTEXT_PASSWORD)
-        return String(password_hash.data(), password_hash.data() + password_hash.size());
+        return String(password_hash.begin(), password_hash.end());
 
     throw Exception(ErrorCodes::LOGICAL_ERROR, "Cannot decode the password for authentication type {}", type);
 }

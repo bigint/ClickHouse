@@ -92,8 +92,8 @@ public:
     {
         static constexpr int SCRAM_SHA256_ITERATIONS = 4096;
 
-        static String digestToString(const Digest & text) { return String(text.data(), text.data() + text.size()); }
-        static Digest stringToDigest(std::string_view text) { return Digest(text.data(), text.data() + text.size()); }
+        static String digestToString(const Digest & text) { return String(text.begin(), text.end()); }
+        static Digest stringToDigest(std::string_view text) { return Digest(text.begin(), text.end()); }
         static Digest encodeSHA256(std::string_view text);
         static Digest encodeScramSHA256(std::string_view password, std::string_view salt);
         static Digest encodeSHA1(std::string_view text);
