@@ -774,7 +774,30 @@ bool DiskAccessStorage::updateNoLock(const UUID & id, const UpdateFunc & update_
     /// Materialize the placeholder before invoking update_func.
     if (isNotLoadedFromDisk(old_entity))
     {
-        old_entity = readAccessEntityFromDisk(id);
+        AccessEntityPtr loaded_entity;
+        try
+        {
+            loaded_entity = readAccessEntityFromDisk(id);
+        }
+        catch (...)
+        {
+            createNeedRebuildListsMark(directory_path);
+            throw;
+        }
+
+        if ((loaded_entity->getType() != old_entity->getType()) || (loaded_entity->getName() != old_entity->getName()))
+        {
+            createNeedRebuildListsMark(directory_path);
+            throw Exception(
+                ErrorCodes::CORRUPTED_DATA,
+                "Access entity {} in {} is {}, but list files record {}",
+                id,
+                getEntityFilePath(directory_path, id),
+                loaded_entity->formatTypeWithName(),
+                old_entity->formatTypeWithName());
+        }
+
+        old_entity = std::move(loaded_entity);
         memory_storage.insertNoNotify(
             id,
             old_entity,

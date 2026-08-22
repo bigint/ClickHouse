@@ -210,6 +210,33 @@ TEST(DiskAccessStorage, LazyMaterializationMarksMismatchedListsForRebuild)
     EXPECT_EQ(storage.getID<Role>("reader"), id);
 }
 
+TEST(DiskAccessStorage, LazyUpdateRejectsMismatchedListMetadata)
+{
+    Poco::TemporaryFile temp_dir;
+    temp_dir.createDirectories();
+    String dir = temp_dir.path() + "/";
+
+    const auto id = UUIDHelpers::generateV4();
+    {
+        AccessChangesNotifier notifier;
+        DiskAccessStorage storage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false);
+        auto user = std::make_shared<User>();
+        user->setName("alice");
+        storage.insert(id, user, false, true);
+    }
+
+    auto role = std::make_shared<Role>();
+    role->setName("reader");
+    writeEntityToFile(std::filesystem::path(dir) / (toString(id) + ".sql"), *role);
+
+    AccessChangesNotifier notifier;
+    DiskAccessStorage storage("test_disk", dir, notifier, /*readonly_=*/false, /*allow_backup_=*/false);
+    EXPECT_THROW(storage.update(id, [](const AccessEntityPtr & entity, const UUID &) { return entity; }), Exception);
+    EXPECT_TRUE(storage.find<User>("alice").has_value());
+    EXPECT_FALSE(storage.find<Role>("reader").has_value());
+    EXPECT_TRUE(std::filesystem::exists(std::filesystem::path(dir) / "need_rebuild_lists.mark"));
+}
+
 TEST(AccessControl, DiskStorageInitialNotificationsAreDeliveredAfterAttachment)
 {
     Poco::TemporaryFile temp_dir;
