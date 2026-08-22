@@ -340,6 +340,9 @@ ContextAccess::~ContextAccess() = default;
 
 void ContextAccess::initialize()
 {
+    /// Subscription cancellation can wait for callbacks which acquire `mutex`, so the
+    /// cancellation guard must outlive (and therefore be destroyed after) this lock.
+    scope_guard obsolete_subscriptions;
     std::lock_guard lock{mutex};
 
     if (params.full_access)
@@ -363,13 +366,14 @@ void ContextAccess::initialize()
             /// another storage. Resolve the current composite owner instead of trusting the payload.
             const auto entity = ptr->access_control->tryRead(changes.back().id);
             UserPtr changed_user = entity ? typeid_cast<UserPtr>(entity) : nullptr;
+            scope_guard obsolete_subscriptions;
             std::lock_guard lock2{ptr->mutex};
-            ptr->setUser(changed_user);
+            ptr->setUser(changed_user, obsolete_subscriptions);
             if (!ptr->user && !ptr->user_was_dropped)
                 throw Exception(ErrorCodes::LOGICAL_ERROR, "ContextAccess is inconsistent (bug 55041, a)");
         });
 
-    setUser(access_control->read<User>(*params.user_id));
+    setUser(access_control->read<User>(*params.user_id), obsolete_subscriptions);
 
     if (!user && !user_was_dropped)
         throw Exception(ErrorCodes::LOGICAL_ERROR, "ContextAccess is inconsistent (bug 55041, b)");
@@ -378,7 +382,7 @@ void ContextAccess::initialize()
 }
 
 
-void ContextAccess::setUser(const UserPtr & user_) const
+void ContextAccess::setUser(const UserPtr & user_, scope_guard & obsolete_subscriptions) const
 {
     user = user_;
 
@@ -386,9 +390,9 @@ void ContextAccess::setUser(const UserPtr & user_) const
     {
         /// User has been dropped.
         user_was_dropped = true;
-        subscription_for_user_change = {};
-        subscription_for_initial_user_change = {};
-        subscription_for_roles_changes = {};
+        obsolete_subscriptions.join(std::move(subscription_for_user_change));
+        obsolete_subscriptions.join(std::move(subscription_for_initial_user_change));
+        obsolete_subscriptions.join(std::move(subscription_for_roles_changes));
         access = nullptr;
         access_with_implicit = nullptr;
         enabled_roles = nullptr;
@@ -426,7 +430,7 @@ void ContextAccess::setUser(const UserPtr & user_) const
         current_roles_with_admin_option.insert(current_roles_with_admin_option.end(), new_granted_with_admin_option.begin(), new_granted_with_admin_option.end());
     }
 
-    subscription_for_roles_changes.reset();
+    obsolete_subscriptions.join(std::move(subscription_for_roles_changes));
     enabled_roles = access_control->getEnabledRoles(current_roles, current_roles_with_admin_option);
     subscription_for_roles_changes = enabled_roles->subscribeForChanges([weak_ptr = weak_from_this()](const std::shared_ptr<const EnabledRolesInfo> & roles_info_)
     {
@@ -441,6 +445,7 @@ void ContextAccess::setUser(const UserPtr & user_) const
 
     if (params.initial_user_id)
     {
+        obsolete_subscriptions.join(std::move(subscription_for_initial_user_change));
         subscription_for_initial_user_change = access_control->subscribeForChanges(
             *params.initial_user_id,
             [weak_ptr = weak_from_this()](const std::vector<AccessChangesNotifier::Change> &)

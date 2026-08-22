@@ -153,7 +153,7 @@ private:
     friend class AccessControl;
 
     void initialize();
-    void setUser(const UserPtr & user_) const TSA_REQUIRES(mutex);
+    void setUser(const UserPtr & user_, scope_guard & obsolete_subscriptions) const TSA_REQUIRES(mutex);
     void setRolesInfo(const std::shared_ptr<const EnabledRolesInfo> & roles_info_) const TSA_REQUIRES(mutex);
     void findRowPoliciesOfInitialUser() const TSA_REQUIRES(mutex);
     void calculateAccessRights() const TSA_REQUIRES(mutex);
