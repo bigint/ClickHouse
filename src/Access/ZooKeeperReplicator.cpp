@@ -504,8 +504,9 @@ void ZooKeeperReplicator::runWatchingThread()
         bool refreshed = false;
         try
         {
-            initZooKeeperIfNeeded();
-            refreshed = refresh();
+            refreshed = initZooKeeperIfNeeded();
+            if (!refreshed)
+                refreshed = refresh();
         }
         catch (...)
         {
@@ -564,9 +565,12 @@ void ZooKeeperReplicator::initZooKeeperWithRetries(size_t max_retries)
     }
 }
 
-void ZooKeeperReplicator::initZooKeeperIfNeeded()
+bool ZooKeeperReplicator::initZooKeeperIfNeeded()
 {
-    getZooKeeper();
+    std::lock_guard lock{cached_zookeeper_mutex};
+    bool initialized = false;
+    getZooKeeperNoLock(&initialized);
+    return initialized;
 }
 
 zkutil::ZooKeeperPtr ZooKeeperReplicator::getZooKeeper()
@@ -575,8 +579,11 @@ zkutil::ZooKeeperPtr ZooKeeperReplicator::getZooKeeper()
     return getZooKeeperNoLock();
 }
 
-zkutil::ZooKeeperPtr ZooKeeperReplicator::getZooKeeperNoLock()
+zkutil::ZooKeeperPtr ZooKeeperReplicator::getZooKeeperNoLock(bool * initialized)
 {
+    if (initialized)
+        *initialized = false;
+
     if (!cached_zookeeper || cached_zookeeper->expired())
     {
         auto zookeeper = get_zookeeper();
@@ -590,6 +597,8 @@ zkutil::ZooKeeperPtr ZooKeeperReplicator::getZooKeeperNoLock()
         createRootNodes(zookeeper);
         refreshEntities(zookeeper, /* all= */ true);
         cached_zookeeper = zookeeper;
+        if (initialized)
+            *initialized = true;
     }
     return cached_zookeeper;
 }

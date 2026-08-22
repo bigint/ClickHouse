@@ -275,6 +275,13 @@ def test_reload_zookeeper(started_cluster):
         TSV(["u1", "u2"]),
     )
 
+    reconnect_user = f"reconnect_user_{uuid.uuid4().hex[:8]}"
+    node1.query(f"CREATE USER {reconnect_user}")
+    node2.query_with_retry("SELECT 1", user=reconnect_user)
+    assert "Not enough privileges" in node2.query_and_get_error(
+        "SELECT number FROM system.numbers LIMIT 1", user=reconnect_user
+    )
+
     ## stop all zookeepers, users will be readonly
     cluster.stop_zookeeper_nodes(["zoo1", "zoo2", "zoo3"])
     assert node2.query(
@@ -289,6 +296,28 @@ def test_reload_zookeeper(started_cluster):
         "SELECT name FROM system.users WHERE name IN ['u1', 'u2'] ORDER BY name"
     ) == TSV(["u1", "u2"])
     assert "ZooKeeper" in node1.query_and_get_error("CREATE USER u3")
+
+    ## Change an existing user while ClickHouse can only reach the stopped zoo1.
+    ## Reconnecting to zoo1 must publish the full refresh immediately, without waiting
+    ## for a subsequent watch event, so the already-cached ContextAccess gains the grant.
+    zk = cluster.get_kazoo_client("zoo2")
+    user_uuid = zk.get(f"/clickhouse/access/U/{reconnect_user}")[0].decode("utf-8")
+    entity_path = f"/clickhouse/access/uuid/{user_uuid}"
+    user_data = zk.get(entity_path)[0]
+    zk.set(
+        entity_path,
+        user_data
+        + f"ATTACH GRANT SELECT ON system.numbers TO {reconnect_user};\n".encode(),
+    )
+
+    ## Let the existing client reconnect without running another ClickHouse command
+    ## that could flush the queued access changes incidentally.
+    cluster.start_zookeeper_nodes(["zoo1"])
+    cluster.wait_zookeeper_nodes_to_start(["zoo1"])
+    assert node2.query_with_retry(
+        "SELECT number FROM system.numbers LIMIT 1", user=reconnect_user
+    ) == "0\n"
+    cluster.stop_zookeeper_nodes(["zoo1"])
 
     ## set config to zoo2, server will be normal
     replace_zookeeper_config(
@@ -324,7 +353,7 @@ def test_reload_zookeeper(started_cluster):
     ), "Total connections to ZooKeeper not equal to 1, {}".format(active_zk_connections)
 
     # Restore the test state
-    node1.query("DROP USER u1, u2, u3")
+    node1.query(f"DROP USER u1, u2, u3, {reconnect_user}")
     cluster.start_zookeeper_nodes(["zoo1", "zoo2", "zoo3"])
     cluster.wait_zookeeper_nodes_to_start(["zoo1", "zoo2", "zoo3"])
     reset_zookeeper_config((node1, node2), default_zk_config)

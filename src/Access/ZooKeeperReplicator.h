@@ -88,8 +88,8 @@ private:
     bool updateZooKeeper(const zkutil::ZooKeeperPtr & zookeeper, const UUID & id, const IAccessStorage::UpdateFunc & update_func, bool throw_if_not_exists);
 
     void initZooKeeperWithRetries(size_t max_retries);
-    void initZooKeeperIfNeeded();
-    zkutil::ZooKeeperPtr getZooKeeperNoLock() TSA_REQUIRES(cached_zookeeper_mutex);
+    bool initZooKeeperIfNeeded();
+    zkutil::ZooKeeperPtr getZooKeeperNoLock(bool * initialized = nullptr) TSA_REQUIRES(cached_zookeeper_mutex);
     void createRootNodes(const zkutil::ZooKeeperPtr & zookeeper);
 
     bool refresh();
