@@ -137,6 +137,7 @@ public:
 
 protected:
     static String escapeForDN(const String & src);
+    static String replacePlaceholders(const String & src, const std::vector<std::pair<String, String>> & pairs);
 
     MAYBE_NORETURN void handleError(int result_code, String text = "");
     MAYBE_NORETURN bool openConnection();

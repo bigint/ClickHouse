@@ -72,6 +72,39 @@ String LDAPClient::escapeForDN(const String & src)
     return dest;
 }
 
+String LDAPClient::replacePlaceholders(const String & src, const std::vector<std::pair<String, String>> & pairs)
+{
+    String dest;
+    dest.reserve(src.size());
+
+    size_t pos = 0;
+    while (pos != src.size())
+    {
+        const std::pair<String, String> * match = nullptr;
+        for (const auto & pair : pairs)
+        {
+            if (!pair.first.empty() && std::string_view{src}.substr(pos).starts_with(pair.first))
+            {
+                match = &pair;
+                break;
+            }
+        }
+
+        if (match)
+        {
+            dest += match->second;
+            pos += match->first.size();
+        }
+        else
+        {
+            dest += src[pos];
+            ++pos;
+        }
+    }
+
+    return dest;
+}
+
 void LDAPClient::SearchParams::updateHash(SipHash & hash) const
 {
     ::updateHash(hash, base_dn);
@@ -160,28 +193,6 @@ namespace
                 default:
                     dest += ch;
                     break;
-            }
-        }
-
-        return dest;
-    }
-
-    auto replacePlaceholders(const String & src, const std::vector<std::pair<String, String>> & pairs)
-    {
-        String dest = src;
-
-        for (const auto & pair : pairs)
-        {
-            const auto & placeholder = pair.first;
-            const auto & value = pair.second;
-            for (
-                 auto pos = dest.find(placeholder);
-                 pos != std::string::npos;
-                 pos = dest.find(placeholder, pos)
-            )
-            {
-                dest.replace(pos, placeholder.size(), value);
-                pos += value.size();
             }
         }
 
@@ -372,7 +383,7 @@ bool LDAPClient::openConnection()
         handleError(ldap_start_tls_s(handle, nullptr, nullptr));
 
     final_user_name = LDAPClient::escapeForDN(params.user);
-    final_bind_dn = replacePlaceholders(params.bind_dn, { {"{user_name}", final_user_name} });
+    final_bind_dn = LDAPClient::replacePlaceholders(params.bind_dn, { {"{user_name}", final_user_name} });
     final_user_dn = final_bind_dn; // The default value... may be updated right after a successful bind.
 
     switch (params.sasl_mechanism)
@@ -444,7 +455,7 @@ LDAPClient::SearchResults LDAPClient::search(const SearchParams & search_params)
         case SearchParams::Scope::CHILDREN:  scope = LDAP_SCOPE_CHILDREN; break;
     }
 
-    const auto final_base_dn = replacePlaceholders(search_params.base_dn, {
+    const auto final_base_dn = LDAPClient::replacePlaceholders(search_params.base_dn, {
         {"{user_name}", final_user_name},
         {"{bind_dn}", final_bind_dn},
         {"{user_dn}", final_user_dn}
@@ -452,7 +463,7 @@ LDAPClient::SearchResults LDAPClient::search(const SearchParams & search_params)
 
     /// `final_user_name` is escaped for a DN. A filter has a different escaping grammar,
     /// so apply it to the original user name instead of escaping the DN representation again.
-    const auto final_search_filter = replacePlaceholders(search_params.search_filter, {
+    const auto final_search_filter = LDAPClient::replacePlaceholders(search_params.search_filter, {
         {"{user_name}", escapeForFilter(params.user)},
         {"{bind_dn}", escapeForFilter(final_bind_dn)},
         {"{user_dn}", escapeForFilter(final_user_dn)},

@@ -11,6 +11,7 @@ class TestLDAPClient : public LDAPClient
 {
 public:
     using LDAPClient::escapeForDN;
+    using LDAPClient::replacePlaceholders;
 };
 
 UInt128 getHash(const LDAPClient::Params & params)
@@ -31,6 +32,15 @@ TEST(LDAPClient, EscapesDNDistinguishedValueBoundaries)
     EXPECT_EQ(TestLDAPClient::escapeForDN("line\nbreak"), "line\\0Abreak");
     EXPECT_EQ(TestLDAPClient::escapeForDN("#leading"), "\\#leading");
     EXPECT_EQ(TestLDAPClient::escapeForDN("middle#hash"), "middle#hash");
+}
+
+TEST(LDAPClient, DoesNotExpandPlaceholdersInsideValues)
+{
+    EXPECT_EQ(
+        TestLDAPClient::replacePlaceholders(
+            "uid={user_name},{bind_dn}",
+            {{"{user_name}", "{bind_dn}"}, {"{bind_dn}", "dc=example,dc=test"}}),
+        "uid={bind_dn},dc=example,dc=test");
 }
 
 TEST(LDAPClient, AuthenticationPolicyParticipatesInParamsHash)
