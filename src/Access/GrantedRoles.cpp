@@ -233,24 +233,16 @@ void GrantedRoles::replaceDependencies(const std::unordered_map<UUID, UUID> & ol
 
 void GrantedRoles::copyDependenciesFrom(const GrantedRoles & src, const std::unordered_set<UUID> & ids)
 {
-    bool found = false;
-
-    for (const auto & role_id : src.roles)
+    for (const auto & role_id : ids)
     {
-        if (ids.contains(role_id))
-        {
-            roles.emplace(role_id);
-            found = true;
-        }
-    }
+        if (!src.roles.contains(role_id))
+            continue;
 
-    if (found)
-    {
-        for (const auto & role_id : src.roles_with_admin_option)
-        {
-            if (ids.contains(role_id))
-                roles_with_admin_option.emplace(role_id);
-        }
+        roles.emplace(role_id);
+        if (src.roles_with_admin_option.contains(role_id))
+            roles_with_admin_option.emplace(role_id);
+        else
+            roles_with_admin_option.erase(role_id);
     }
 }
 
