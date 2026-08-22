@@ -25,6 +25,7 @@ namespace DB
 namespace ErrorCodes
 {
 extern const int CORRUPTED_DATA;
+extern const int CANNOT_STAT;
 extern const int DIRECTORY_DOESNT_EXIST;
 extern const int FILE_DOESNT_EXIST;
 extern const int LOGICAL_ERROR;
@@ -442,7 +443,13 @@ void DiskAccessStorage::reloadAllAndRebuildLists()
         std::error_code mtime_ec;
         auto mtime = std::filesystem::last_write_time(path, mtime_ec);
         if (mtime_ec)
-            LOG_WARNING(getLogger(), "Failed to stat {}: {}", path.string(), mtime_ec.message());
+        {
+            throw Exception(
+                ErrorCodes::CANNOT_STAT,
+                "Cannot read the modification time of access entity file {}: {}",
+                path.string(),
+                mtime_ec.message());
+        }
 
         auto key = std::make_pair(entity->getType(), entity->getName());
         auto it = loaded_entities.find(key);
