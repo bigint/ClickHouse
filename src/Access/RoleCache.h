@@ -31,7 +31,9 @@ private:
     void ensureSubscribed() TSA_REQUIRES(mutex);
     void collectEnabledRolesIfNeeded(scope_guard * notifications) TSA_REQUIRES(mutex);
     void collectEnabledRoles(scope_guard * notifications) TSA_REQUIRES(mutex);
-    void collectEnabledRoles(EnabledRoles & enabled_roles, scope_guard * notifications) TSA_REQUIRES(mutex);
+    std::shared_ptr<const EnabledRolesInfo> calculateEnabledRoles(
+        const EnabledRoles & enabled_roles,
+        std::unordered_set<UUID> & new_referenced_roles) TSA_REQUIRES(mutex);
     RolePtr getRole(const UUID & role_id) TSA_REQUIRES(mutex);
     void roleChanged(const UUID & role_id, const RolePtr & changed_role) TSA_REQUIRES(mutex);
     void roleRemoved(const UUID & role_id) TSA_REQUIRES(mutex);

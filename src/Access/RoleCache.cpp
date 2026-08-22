@@ -108,7 +108,10 @@ RoleCache::getEnabledRoles(boost::container::flat_set<UUID> roles, boost::contai
     }
 
     auto res = std::shared_ptr<EnabledRoles>(new EnabledRoles(params));
-    collectEnabledRoles(*res, nullptr);
+    std::unordered_set<UUID> new_referenced_roles;
+    auto new_info = calculateEnabledRoles(*res, new_referenced_roles);
+    referenced_roles.insert(new_referenced_roles.begin(), new_referenced_roles.end());
+    res->setRolesInfo(new_info, nullptr);
     enabled_roles_by_params.emplace(std::move(params), res);
     return res;
 }
@@ -168,14 +171,14 @@ void RoleCache::collectEnabledRoles(scope_guard * notifications)
 
     ProfileEvents::increment(ProfileEvents::RoleCacheRecalculations);
     Stopwatch watch;
-    /// Recompute the set of roles that take part in some enabled set from scratch (it also drops roles
-    /// that are only referenced by enabled sets that have expired by now).
-    referenced_roles.clear();
+    std::unordered_set<UUID> new_referenced_roles;
+    std::vector<std::pair<std::shared_ptr<EnabledRoles>, std::shared_ptr<const EnabledRolesInfo>>> recalculated;
+    recalculated.reserve(enabled_roles_by_params.size());
     for (auto i = enabled_roles_by_params.begin(), e = enabled_roles_by_params.end(); i != e;)
     {
         if (auto enabled_roles = i->second.lock())
         {
-            collectEnabledRoles(*enabled_roles, notifications);
+            recalculated.emplace_back(enabled_roles, calculateEnabledRoles(*enabled_roles, new_referenced_roles));
             ++i;
         }
         else
@@ -183,6 +186,13 @@ void RoleCache::collectEnabledRoles(scope_guard * notifications)
             i = enabled_roles_by_params.erase(i);
         }
     }
+
+    /// Publish only after every enabled set has been calculated successfully. Otherwise an exception
+    /// while reading a later role could expose a mixture of old and new role graphs and leave the
+    /// dependency index only partially rebuilt.
+    referenced_roles = std::move(new_referenced_roles);
+    for (const auto & [enabled_roles, new_info] : recalculated)
+        enabled_roles->setRolesInfo(new_info, notifications);
 
     const auto elapsed_ms = watch.elapsedMilliseconds();
     ProfileEvents::increment(ProfileEvents::RoleCacheRecalculationMicroseconds, watch.elapsedMicroseconds());
@@ -194,7 +204,9 @@ void RoleCache::collectEnabledRoles(scope_guard * notifications)
 }
 
 
-void RoleCache::collectEnabledRoles(EnabledRoles & enabled_roles, scope_guard * notifications)
+std::shared_ptr<const EnabledRolesInfo> RoleCache::calculateEnabledRoles(
+    const EnabledRoles & enabled_roles,
+    std::unordered_set<UUID> & new_referenced_roles)
 {
     /// `mutex` is already locked.
 
@@ -214,11 +226,9 @@ void RoleCache::collectEnabledRoles(EnabledRoles & enabled_roles, scope_guard * 
     /// a recalculation (and a change to a role nobody uses does not).
     /// We need to remember `skip_ids` too in order to trigger a recalculation if they appear later
     /// (for example if a role with a granted role is replicated before that granted role);
-    referenced_roles.insert(new_info->enabled_roles.begin(), new_info->enabled_roles.end());
-    referenced_roles.insert(skip_ids.begin(), skip_ids.end());
-
-    /// Collect data from the collected roles.
-    enabled_roles.setRolesInfo(new_info, notifications);
+    new_referenced_roles.insert(new_info->enabled_roles.begin(), new_info->enabled_roles.end());
+    new_referenced_roles.insert(skip_ids.begin(), skip_ids.end());
+    return new_info;
 }
 
 
