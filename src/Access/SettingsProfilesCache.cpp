@@ -53,47 +53,15 @@ void SettingsProfilesCache::ensureAllProfilesRead()
                 for (const auto & change : changes)
                     changed_ids.emplace(change.id);
 
-                auto new_all_profiles = all_profiles;
-                bool profiles_changed = false;
                 for (const auto & id : changed_ids)
                 {
                     auto entity = access_control.tryRead(id);
                     if (auto profile = entity ? typeid_cast<SettingsProfilePtr>(entity) : nullptr)
-                    {
-                        auto [it, inserted] = new_all_profiles.emplace(id, profile);
-                        if (!inserted && it->second != profile)
-                        {
-                            it->second = profile;
-                            profiles_changed = true;
-                        }
-                        profiles_changed |= inserted;
-                    }
+                        profileAddedOrChanged(id, profile);
                     else
-                        profiles_changed |= new_all_profiles.erase(id) != 0;
+                        profileRemoved(id);
                 }
-
-                if (!profiles_changed)
-                    return;
-
-                std::optional<UUID> new_default_profile_id;
-                if (!default_profile_name.empty())
-                    new_default_profile_id = access_control.find<SettingsProfile>(default_profile_name);
-
-                const auto old_default_profile_id = default_profile_id;
-                const bool old_need_merge_settings_and_constraints = need_merge_settings_and_constraints;
-                all_profiles.swap(new_all_profiles);
-                default_profile_id = new_default_profile_id;
-                scope_guard rollback = [&]
-                {
-                    all_profiles.swap(new_all_profiles);
-                    default_profile_id = old_default_profile_id;
-                    profile_infos_cache.clear();
-                    need_merge_settings_and_constraints = old_need_merge_settings_and_constraints;
-                };
-                profile_infos_cache.clear();
-                need_merge_settings_and_constraints = true;
                 mergeSettingsAndConstraintsIfNeeded();
-                rollback.release();
             });
     }
 
@@ -108,6 +76,48 @@ void SettingsProfilesCache::ensureAllProfilesRead()
 
     /// Set only after the subscription and the initial read succeed.
     all_profiles_read = true;
+}
+
+
+void SettingsProfilesCache::profileAddedOrChanged(const UUID & profile_id, const SettingsProfilePtr & new_profile)
+{
+    /// `mutex` is already locked.
+    auto it = all_profiles.find(profile_id);
+    if (it == all_profiles.end())
+        all_profiles.emplace(profile_id, new_profile);
+    else
+    {
+        it->second = new_profile;
+    }
+    refreshDefaultProfileID();
+    profile_infos_cache.clear();
+    need_merge_settings_and_constraints = true;
+}
+
+
+void SettingsProfilesCache::profileRemoved(const UUID & profile_id)
+{
+    /// `mutex` is already locked.
+    auto it = all_profiles.find(profile_id);
+    if (it == all_profiles.end())
+        return;
+    all_profiles.erase(it);
+    refreshDefaultProfileID();
+    profile_infos_cache.clear();
+    need_merge_settings_and_constraints = true;
+}
+
+
+void SettingsProfilesCache::refreshDefaultProfileID()
+{
+    /// `mutex` is already locked.
+    if (default_profile_name.empty())
+    {
+        default_profile_id.reset();
+        return;
+    }
+
+    default_profile_id = access_control.find<SettingsProfile>(default_profile_name);
 }
 
 

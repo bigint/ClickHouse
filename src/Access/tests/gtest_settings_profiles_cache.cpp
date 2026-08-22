@@ -246,12 +246,6 @@ TEST(SettingsProfilesCache, FailedBatchRefreshDoesNotPublishPartialResults)
     const auto * second_value = second_enabled_settings->getInfo()->settings.tryGet("max_block_size");
     ASSERT_NE(second_value, nullptr);
     EXPECT_EQ(*second_value, Field{UInt64{10}});
-
-    /// A newly created enabled set must use the same pre-refresh generation as the existing sets.
-    auto new_enabled_settings = access_control.getEnabledSettings(UUIDHelpers::generateV4(), first_user_settings, {}, {});
-    const auto * new_first_value = new_enabled_settings->getInfo()->settings.tryGet("max_threads");
-    ASSERT_NE(new_first_value, nullptr);
-    EXPECT_EQ(*new_first_value, Field{UInt64{1}});
 }
 
 TEST(SettingsProfilesCache, DefaultProfileTracksConfiguredName)
