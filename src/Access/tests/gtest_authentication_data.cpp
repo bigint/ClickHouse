@@ -7,6 +7,7 @@
 #include <Common/OpenSSLHelpers.h>
 #include <Common/SettingsChanges.h>
 #include <Interpreters/ClientInfo.h>
+#include <Parsers/ASTLiteral.h>
 #include <gtest/gtest.h>
 
 using namespace DB;
@@ -62,6 +63,51 @@ TEST(AuthenticationData, MalformedASTIsRejected)
     ASTAuthenticationData missing_server;
     missing_server.type = AuthenticationType::LDAP;
     EXPECT_THROW(AuthenticationData::fromAST(missing_server, nullptr, false), Exception);
+}
+
+TEST(AuthenticationData, SurplusASTArgumentsAreRejected)
+{
+    auto add_argument = [](ASTAuthenticationData & ast, const String & value)
+    {
+        ast.children.push_back(make_intrusive<ASTLiteral>(value));
+    };
+
+    ASTAuthenticationData password;
+    password.type = AuthenticationType::PLAINTEXT_PASSWORD;
+    password.contains_password = true;
+    add_argument(password, "password");
+    add_argument(password, "ignored");
+    EXPECT_THROW(AuthenticationData::fromAST(password, nullptr, false), Exception);
+
+    ASTAuthenticationData hash;
+    hash.type = AuthenticationType::DOUBLE_SHA1_PASSWORD;
+    hash.contains_hash = true;
+    add_argument(hash, String(40, '0'));
+    add_argument(hash, "ignored");
+    EXPECT_THROW(AuthenticationData::fromAST(hash, nullptr, false), Exception);
+
+    ASTAuthenticationData ldap;
+    ldap.type = AuthenticationType::LDAP;
+    add_argument(ldap, "server");
+    add_argument(ldap, "ignored");
+    EXPECT_THROW(AuthenticationData::fromAST(ldap, nullptr, false), Exception);
+
+    ASTAuthenticationData http;
+    http.type = AuthenticationType::HTTP;
+    add_argument(http, "server");
+    add_argument(http, "basic");
+    add_argument(http, "ignored");
+    EXPECT_THROW(AuthenticationData::fromAST(http, nullptr, false), Exception);
+
+    ASTAuthenticationData no_password;
+    no_password.type = AuthenticationType::NO_PASSWORD;
+    add_argument(no_password, "ignored");
+    EXPECT_THROW(AuthenticationData::fromAST(no_password, nullptr, false), Exception);
+
+    ASTAuthenticationData no_password_with_flag;
+    no_password_with_flag.type = AuthenticationType::NO_PASSWORD;
+    no_password_with_flag.contains_password = true;
+    EXPECT_THROW(AuthenticationData::fromAST(no_password_with_flag, nullptr, false), Exception);
 }
 
 TEST(AuthenticationData, ScramPasswordHashMustHaveSHA256Length)

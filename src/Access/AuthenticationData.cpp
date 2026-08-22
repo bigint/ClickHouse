@@ -15,6 +15,8 @@
 #include <boost/algorithm/hex.hpp>
 #include <Poco/SHA1Engine.h>
 
+#include <limits>
+
 #include "config.h"
 
 #if USE_SSL
@@ -510,6 +512,36 @@ AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & que
     if (query.contains_password && query.contains_hash)
         throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData cannot contain both a password and a hash");
 
+    const auto check_argument_count = [&](size_t min_count, size_t max_count)
+    {
+        const size_t count = query.children.size();
+        if (count < min_count || count > max_count)
+        {
+            const String authentication_type = query.type ? toString(*query.type) : "the default password type";
+            if (min_count == max_count)
+                throw Exception(
+                    ErrorCodes::LOGICAL_ERROR,
+                    "ASTAuthenticationData for {} has {} arguments, expected {}",
+                    authentication_type,
+                    count,
+                    min_count);
+            if (max_count == std::numeric_limits<size_t>::max())
+                throw Exception(
+                    ErrorCodes::LOGICAL_ERROR,
+                    "ASTAuthenticationData for {} has {} arguments, expected at least {}",
+                    authentication_type,
+                    count,
+                    min_count);
+            throw Exception(
+                ErrorCodes::LOGICAL_ERROR,
+                "ASTAuthenticationData for {} has {} arguments, expected between {} and {}",
+                authentication_type,
+                count,
+                min_count,
+                max_count);
+        }
+    };
+
     time_t valid_until = 0;
 
     if (query.valid_until)
@@ -519,6 +551,9 @@ AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & que
 
     if (query.type && query.type == AuthenticationType::NO_PASSWORD)
     {
+        if (query.contains_password || query.contains_hash)
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData for no_password cannot contain a password or hash");
+        check_argument_count(0, 0);
         AuthenticationData auth_data;
         auth_data.setValidUntil(valid_until);
         return auth_data;
@@ -526,6 +561,9 @@ AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & que
 
     if (query.type && query.type == AuthenticationType::NO_AUTHENTICATION)
     {
+        if (query.contains_password || query.contains_hash)
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData for no_authentication cannot contain a password or hash");
+        check_argument_count(0, 0);
         AuthenticationData auth_data{AuthenticationType::NO_AUTHENTICATION};
         auth_data.setValidUntil(valid_until);
         return auth_data;
@@ -535,6 +573,9 @@ AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & que
     if (query.type && query.type == AuthenticationType::SSH_KEY)
     {
 #if USE_SSH
+        if (query.contains_password || query.contains_hash)
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData for ssh_key cannot contain a password or hash");
+        check_argument_count(1, std::numeric_limits<size_t>::max());
         AuthenticationData auth_data(*query.type);
         std::vector<SSHKey> keys;
 
@@ -570,8 +611,7 @@ AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & que
 
     if (query.contains_password)
     {
-        if (args.empty())
-            throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData with a password has no password argument");
+        check_argument_count(1, 1);
 
         if (!query.type && !context)
             throw Exception(ErrorCodes::LOGICAL_ERROR, "Cannot get default password type without context");
@@ -673,8 +713,10 @@ AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & que
 
     if (query.contains_hash)
     {
-        if (args.empty())
-            throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData with a hash has no hash argument");
+        if (query.type == AuthenticationType::SHA256_PASSWORD || query.type == AuthenticationType::SCRAM_SHA256_PASSWORD)
+            check_argument_count(1, 2);
+        else
+            check_argument_count(1, 1);
 
         String value = checkAndGetLiteralArgument<String>(args[0], "hash");
 
@@ -696,14 +738,14 @@ AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & que
     }
     else if (query.type == AuthenticationType::LDAP)
     {
-        if (args.empty())
-            throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData for LDAP has no server name");
+        check_argument_count(1, 1);
 
         String value = checkAndGetLiteralArgument<String>(args[0], "ldap_server_name");
         auth_data.setLDAPServerName(value);
     }
     else if (query.type == AuthenticationType::KERBEROS)
     {
+        check_argument_count(0, 1);
         if (!args.empty())
         {
             String value = checkAndGetLiteralArgument<String>(args[0], "kerberos_realm");
@@ -713,6 +755,7 @@ AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & que
     else if (query.type == AuthenticationType::SSL_CERTIFICATE)
     {
 #if USE_SSL
+        check_argument_count(1, std::numeric_limits<size_t>::max());
         if (!query.ssl_cert_subject_type)
             throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData for SSL certificate has no subject type");
 
@@ -725,8 +768,7 @@ AuthenticationData AuthenticationData::fromAST(const ASTAuthenticationData & que
     }
     else if (query.type == AuthenticationType::HTTP)
     {
-        if (args.empty())
-            throw Exception(ErrorCodes::LOGICAL_ERROR, "ASTAuthenticationData for HTTP has no server name");
+        check_argument_count(1, 2);
 
         String server = checkAndGetLiteralArgument<String>(args[0], "http_auth_server_name");
         auto scheme = HTTPAuthenticationScheme::BASIC;  // Default scheme
