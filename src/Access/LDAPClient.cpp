@@ -450,8 +450,10 @@ LDAPClient::SearchResults LDAPClient::search(const SearchParams & search_params)
         {"{user_dn}", final_user_dn}
     });
 
+    /// `final_user_name` is escaped for a DN. A filter has a different escaping grammar,
+    /// so apply it to the original user name instead of escaping the DN representation again.
     const auto final_search_filter = replacePlaceholders(search_params.search_filter, {
-        {"{user_name}", escapeForFilter(final_user_name)},
+        {"{user_name}", escapeForFilter(params.user)},
         {"{bind_dn}", escapeForFilter(final_bind_dn)},
         {"{user_dn}", escapeForFilter(final_user_dn)},
         {"{base_dn}", escapeForFilter(final_base_dn)}
