@@ -59,15 +59,32 @@ void LDAPClient::RoleSearchParams::updateHash(SipHash & hash) const
 
 void LDAPClient::Params::updateHash(SipHash & hash) const
 {
+    ::updateHash(hash, static_cast<int>(protocol_version));
     ::updateHash(hash, host);
     ::updateHash(hash, port);
+    ::updateHash(hash, static_cast<int>(enable_tls));
+    ::updateHash(hash, static_cast<int>(tls_minimum_protocol_version));
+    ::updateHash(hash, static_cast<int>(tls_require_cert));
+    ::updateHash(hash, tls_cert_file);
+    ::updateHash(hash, tls_key_file);
+    ::updateHash(hash, tls_ca_cert_file);
+    ::updateHash(hash, tls_ca_cert_dir);
+    ::updateHash(hash, tls_cipher_suite);
+    ::updateHash(hash, static_cast<int>(sasl_mechanism));
     ::updateHash(hash, bind_dn);
     ::updateHash(hash, user);
     ::updateHash(hash, password);
-    ::updateHash(hash, static_cast<int>(follow_referrals)); // Include follow referral behavior
+    ::updateHash(hash, user_dn_detection.has_value());
 
     if (user_dn_detection)
         user_dn_detection->updateHash(hash);
+
+    ::updateHash(hash, verification_cooldown.count());
+    ::updateHash(hash, operation_timeout.count());
+    ::updateHash(hash, network_timeout.count());
+    ::updateHash(hash, search_timeout.count());
+    ::updateHash(hash, search_limit);
+    ::updateHash(hash, follow_referrals);
 }
 
 LDAPClient::LDAPClient(const Params & params_)
