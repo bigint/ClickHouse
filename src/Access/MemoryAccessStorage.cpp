@@ -257,14 +257,14 @@ void MemoryAccessStorage::removeAllExceptNoLock(const std::vector<UUID> & ids_to
     removeAllExceptNoLock(boost::container::flat_set<UUID>{ids_to_keep.begin(), ids_to_keep.end()});
 }
 
-void MemoryAccessStorage::removeAllExceptNoLock(const boost::container::flat_set<UUID> & ids_to_keep)
+void MemoryAccessStorage::removeAllExceptNoLock(const boost::container::flat_set<UUID> & ids_to_keep, bool notify)
 {
     for (auto it = entries_by_id.begin(); it != entries_by_id.end();)
     {
         const auto & id = it->first;
         ++it; /// We must go to the next element in the map `entries_by_id` here because otherwise removeNoLock() can invalidate our iterator.
         if (!ids_to_keep.contains(id))
-            removeNoLock(id, /* throw_if_not_exists */ true); // NOLINT
+            removeNoLock(id, /* throw_if_not_exists */ true, notify); // NOLINT
     }
 }
 
@@ -298,7 +298,7 @@ void MemoryAccessStorage::setAll(const std::vector<std::pair<UUID, AccessEntityP
     ids_to_keep.reserve(entities_without_conflicts.size());
     for (const auto & [id, _] : entities_without_conflicts)
         ids_to_keep.insert(id);
-    removeAllExceptNoLock(ids_to_keep);
+    removeAllExceptNoLock(ids_to_keep, notify);
 
     /// Insert or update entities.
     for (const auto & [id, entity] : entities_without_conflicts)

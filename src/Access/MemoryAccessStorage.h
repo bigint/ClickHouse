@@ -55,7 +55,7 @@ private:
     bool updateNoLock(const UUID & id, const UpdateFunc & update_func, bool throw_if_not_exists, bool notify = true);
 
     void removeAllExceptNoLock(const std::vector<UUID> & ids_to_keep);
-    void removeAllExceptNoLock(const boost::container::flat_set<UUID> & ids_to_keep);
+    void removeAllExceptNoLock(const boost::container::flat_set<UUID> & ids_to_keep, bool notify = true);
 
     struct Entry
     {

@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <Access/AccessChangesNotifier.h>
 #include <Access/MemoryAccessStorage.h>
 #include <Access/Role.h>
 #include <Access/User.h>
@@ -86,4 +87,21 @@ TEST(MemoryAccessStorage, ConflictCleanupRemovesOverlappingConflictsOnce)
 
     EXPECT_EQ(entities, expected_entities);
     EXPECT_EQ(warnings.str(), expected_warnings);
+}
+
+TEST(MemoryAccessStorage, SetAllWithoutNotificationsSuppressesRemovals)
+{
+    AccessChangesNotifier notifier;
+    MemoryAccessStorage storage("memory", notifier, true);
+    storage.insert(makeEntity<User>("user"));
+    notifier.sendNotifications();
+
+    size_t delivered_changes = 0;
+    auto subscription = notifier.subscribeForChanges<User>([&](const std::vector<AccessChangesNotifier::Change> & changes)
+                                                           { delivered_changes += changes.size(); });
+
+    storage.setAll({}, /* notify= */ false);
+    notifier.sendNotifications();
+
+    EXPECT_EQ(delivered_changes, 0u);
 }
