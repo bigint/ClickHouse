@@ -56,8 +56,11 @@ void EnabledRoles::setRolesInfo(const std::shared_ptr<const EnabledRolesInfo> & 
             boost::range::copy(handlers->list, std::back_inserter(handlers_to_notify));
         }
 
+        /// Copy the value published by this update while it is still unambiguous. Reading
+        /// `info` here after releasing `info_mutex` would race with another recalculation,
+        /// and could also deliver that later recalculation's value for this notification.
         notifications->join(scope_guard(
-            [my_info = info, my_handlers_to_notify = std::move(handlers_to_notify)]
+            [my_info = info_, my_handlers_to_notify = std::move(handlers_to_notify)]
             {
                 for (const auto & entry : my_handlers_to_notify)
                 {
