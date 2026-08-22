@@ -188,6 +188,39 @@ TEST(SettingsProfilesCache, DefaultProfileUsesStoragePriority)
     EXPECT_EQ(std::vector<UUID>{lower_priority_id}, enabled_settings->getInfo()->profiles_with_implicit);
 }
 
+TEST(SettingsProfilesCache, ProfileChangesResolveCompositeOwner)
+{
+    AccessControl access_control;
+    auto higher_priority_storage = std::make_shared<MemoryAccessStorage>("higher_priority", access_control.getChangesNotifier(), true);
+    auto lower_priority_storage = std::make_shared<MemoryAccessStorage>("lower_priority", access_control.getChangesNotifier(), true);
+    const auto profile_id = UUIDHelpers::generateV4();
+
+    auto higher_priority_profile = std::make_shared<SettingsProfile>();
+    higher_priority_profile->setName("higher_priority");
+    higher_priority_storage->insert(profile_id, higher_priority_profile, false, true);
+
+    auto lower_priority_profile = std::make_shared<SettingsProfile>();
+    lower_priority_profile->setName("lower_priority");
+    lower_priority_storage->insert(profile_id, lower_priority_profile, false, true);
+
+    access_control.setStorages({higher_priority_storage, lower_priority_storage});
+    SettingsProfileElements settings_from_user;
+    settings_from_user.emplace_back().parent_profile = profile_id;
+    auto enabled_settings = access_control.getEnabledSettings(UUIDHelpers::generateV4(), settings_from_user, {}, {});
+    EXPECT_EQ(Strings{"higher_priority"}, enabled_settings->getInfo()->getProfileNames());
+
+    lower_priority_storage->update(
+        profile_id,
+        [](const AccessEntityPtr & entity, const UUID &)
+        {
+            auto updated = std::static_pointer_cast<SettingsProfile>(entity->clone());
+            updated->setName("lower_priority_updated");
+            return updated;
+        });
+    access_control.getChangesNotifier().sendNotifications();
+    EXPECT_EQ(Strings{"higher_priority"}, enabled_settings->getInfo()->getProfileNames());
+}
+
 TEST(SettingsProfilesCache, EnabledSettingsOutlivesAccessControl)
 {
     std::shared_ptr<const EnabledSettings> enabled_settings;

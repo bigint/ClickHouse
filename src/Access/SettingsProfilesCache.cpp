@@ -8,6 +8,8 @@
 #include <Common/logger_useful.h>
 #include <Common/quoteString.h>
 
+#include <unordered_set>
+
 
 namespace ProfileEvents
 {
@@ -42,12 +44,17 @@ void SettingsProfilesCache::ensureAllProfilesRead()
         [this](const std::vector<AccessChangesNotifier::Change> & changes)
         {
             std::lock_guard lock{mutex};
+            std::unordered_set<UUID> changed_ids;
             for (const auto & change : changes)
+                changed_ids.emplace(change.id);
+
+            for (const auto & id : changed_ids)
             {
-                if (change.entity)
-                    profileAddedOrChanged(change.id, typeid_cast<SettingsProfilePtr>(change.entity));
+                auto entity = access_control.tryRead(id);
+                if (auto profile = entity ? typeid_cast<SettingsProfilePtr>(entity) : nullptr)
+                    profileAddedOrChanged(id, profile);
                 else
-                    profileRemoved(change.id);
+                    profileRemoved(id);
             }
             mergeSettingsAndConstraintsIfNeeded();
         });
