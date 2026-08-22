@@ -43,6 +43,35 @@ namespace ErrorCodes
     extern const int LDAP_ERROR;
 }
 
+String LDAPClient::escapeForDN(const String & src)
+{
+    constexpr char hex_digits[] = "0123456789ABCDEF";
+    String dest;
+    dest.reserve(src.size() * 2);
+
+    for (size_t i = 0; i != src.size(); ++i)
+    {
+        const auto ch = static_cast<unsigned char>(src[i]);
+        if (ch < 0x20 || ch == 0x7f)
+        {
+            dest += '\\';
+            dest += hex_digits[ch >> 4];
+            dest += hex_digits[ch & 0x0f];
+            continue;
+        }
+
+        const bool must_escape
+            = ch == ',' || ch == '+' || ch == '"' || ch == '\\' || ch == '<' || ch == '>' || ch == ';' || ch == '='
+            || (ch == '#' && i == 0)
+            || (ch == ' ' && (i == 0 || i + 1 == src.size()));
+        if (must_escape)
+            dest += '\\';
+        dest += static_cast<char>(ch);
+    }
+
+    return dest;
+}
+
 void LDAPClient::SearchParams::updateHash(SipHash & hash) const
 {
     ::updateHash(hash, base_dn);
@@ -103,33 +132,6 @@ namespace
 {
 
     std::recursive_mutex ldap_global_mutex;
-
-    auto escapeForDN(const String & src)
-    {
-        String dest;
-        dest.reserve(src.size() * 2);
-
-        for (auto ch : src)
-        {
-            switch (ch) // NOLINT(bugprone-switch-missing-default-case)
-            {
-                case ',':
-                case '\\':
-                case '#':
-                case '+':
-                case '<':
-                case '>':
-                case ';':
-                case '"':
-                case '=':
-                    dest += '\\';
-                    break;
-            }
-            dest += ch;
-        }
-
-        return dest;
-    }
 
     auto escapeForFilter(const String & src)
     {
@@ -369,7 +371,7 @@ bool LDAPClient::openConnection()
     if (params.enable_tls == LDAPClient::Params::TLSEnable::YES_STARTTLS)
         handleError(ldap_start_tls_s(handle, nullptr, nullptr));
 
-    final_user_name = escapeForDN(params.user);
+    final_user_name = LDAPClient::escapeForDN(params.user);
     final_bind_dn = replacePlaceholders(params.bind_dn, { {"{user_name}", final_user_name} });
     final_user_dn = final_bind_dn; // The default value... may be updated right after a successful bind.
 

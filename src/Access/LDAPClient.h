@@ -136,6 +136,8 @@ public:
     LDAPClient & operator= (LDAPClient &&) = delete;
 
 protected:
+    static String escapeForDN(const String & src);
+
     MAYBE_NORETURN void handleError(int result_code, String text = "");
     MAYBE_NORETURN bool openConnection();
     void closeConnection() noexcept;

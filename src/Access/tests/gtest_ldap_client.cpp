@@ -7,12 +7,30 @@ using namespace DB;
 
 namespace
 {
+class TestLDAPClient : public LDAPClient
+{
+public:
+    using LDAPClient::escapeForDN;
+};
+
 UInt128 getHash(const LDAPClient::Params & params)
 {
     SipHash hash;
     params.updateHash(hash);
     return hash.get128();
 }
+}
+
+TEST(LDAPClient, EscapesDNDistinguishedValueBoundaries)
+{
+    String value = " user,";
+    value.push_back('\0');
+    value += "name ";
+
+    EXPECT_EQ(TestLDAPClient::escapeForDN(value), "\\ user\\,\\00name\\ ");
+    EXPECT_EQ(TestLDAPClient::escapeForDN("line\nbreak"), "line\\0Abreak");
+    EXPECT_EQ(TestLDAPClient::escapeForDN("#leading"), "\\#leading");
+    EXPECT_EQ(TestLDAPClient::escapeForDN("middle#hash"), "middle#hash");
 }
 
 TEST(LDAPClient, AuthenticationPolicyParticipatesInParamsHash)
